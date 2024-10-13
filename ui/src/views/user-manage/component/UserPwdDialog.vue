@@ -108,7 +108,7 @@ watch(dialogVisible, (bool) => {
 
 const open = (data: any) => {
   userId.value = data.id
-  dialogVisible.value = true
+  // dialogVisible.value = true // 避免本地服务总是弹出修改密码弹框
   userFormRef.value?.clearValidate()
 }
 
