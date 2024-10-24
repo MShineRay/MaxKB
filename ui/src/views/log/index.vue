@@ -2,7 +2,7 @@
   <LayoutContainer header="对话日志">
     <div class="p-24">
       <div class="mb-16">
-        <el-select v-model="history_day" class="mr-12 w-240" @change="changeHandle">
+        <el-select v-model="history_day" class="mr-12 w-120" @change="changeDayHandle">
           <el-option
             v-for="item in dayOptions"
             :key="item.value"
@@ -10,15 +10,29 @@
             :value="item.value"
           />
         </el-select>
+        <el-date-picker
+          v-if="history_day === 'other'"
+          v-model="daterangeValue"
+          type="daterange"
+          :start-placeholder="$t('views.applicationOverview.monitor.startDatePlaceholder')"
+          :end-placeholder="$t('views.applicationOverview.monitor.endDatePlaceholder')"
+          format="YYYY-MM-DD"
+          value-format="YYYY-MM-DD"
+          @change="changeDayRangeHandle"
+        />
         <el-input
           v-model="search"
           @change="getList"
           placeholder="搜索"
           prefix-icon="Search"
           class="w-240"
+          style="margin-left: 10px"
           clearable
         />
-        <el-button class="float-right" @click="exportLog">导出</el-button>
+        <div style="display: flex; align-items: center" class="float-right">
+          <el-button @click="dialogVisible = true" type="primary">清除策略</el-button>
+          <el-button @click="exportLog">导出</el-button>
+        </div>
       </div>
 
       <app-table
@@ -29,8 +43,10 @@
         @row-click="rowClickHandle"
         v-loading="loading"
         :row-class-name="setRowClass"
+        @selection-change="handleSelectionChange"
         class="log-table"
       >
+        <el-table-column type="selection" width="55" />
         <el-table-column prop="abstract" label="摘要" show-overflow-tooltip />
         <el-table-column prop="chat_record_count" label="对话提问数" align="right" />
         <el-table-column prop="star_num" align="right">
@@ -45,7 +61,9 @@
                     link
                     @click="popoverVisible = !popoverVisible"
                   >
-                    <el-icon><Filter /></el-icon>
+                    <el-icon>
+                      <Filter />
+                    </el-icon>
                   </el-button>
                 </template>
                 <div class="filter">
@@ -130,6 +148,33 @@
       :next_disable="next_disable"
       @refresh="refresh"
     />
+    <el-dialog
+      title="清除策略"
+      v-model="dialogVisible"
+      width="25%"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+    >
+      <span>删除</span>
+      <el-input-number
+        v-model="days"
+        controls-position="right"
+        min="1"
+        max="100000"
+        style="width: 110px; margin-left: 8px; margin-right: 8px"
+      ></el-input-number>
+      <span>天之前的对话记录</span>
+      <template #footer>
+        <div class="dialog-footer" style="margin-top: 16px">
+          <el-button @click="dialogVisible = false">{{
+            $t('layout.topbar.avatar.dialog.cancel')
+          }}</el-button>
+          <el-button type="primary" @click="saveCleanTime">
+            {{ $t('layout.topbar.avatar.dialog.save') }}
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </LayoutContainer>
 </template>
 <script setup lang="ts">
@@ -139,9 +184,11 @@ import { cloneDeep } from 'lodash'
 import ChatRecordDrawer from './component/ChatRecordDrawer.vue'
 import { MsgSuccess, MsgConfirm } from '@/utils/message'
 import logApi from '@/api/log'
-import { datetimeFormat } from '@/utils/time'
+import { beforeDay, datetimeFormat, nowDate } from '@/utils/time'
 import useStore from '@/stores'
 import type { Dict } from '@/api/type/common'
+import { t } from '@/locales'
+
 const { application, log } = useStore()
 const route = useRoute()
 const {
@@ -151,21 +198,33 @@ const {
 const dayOptions = [
   {
     value: 7,
-    label: '过去7天'
+    // @ts-ignore
+    label: t('views.applicationOverview.monitor.pastDayOptions.past7Days') // 使用 t 方法来国际化显示文本
   },
   {
     value: 30,
-    label: '过去30天'
+    label: t('views.applicationOverview.monitor.pastDayOptions.past30Days')
   },
   {
     value: 90,
-    label: '过去90天'
+    label: t('views.applicationOverview.monitor.pastDayOptions.past90Days')
   },
   {
     value: 183,
-    label: '过去半年'
+    label: t('views.applicationOverview.monitor.pastDayOptions.past183Days')
+  },
+  {
+    value: 'other',
+    label: t('views.applicationOverview.monitor.pastDayOptions.other')
   }
 ]
+const daterangeValue = ref('')
+// 提交日期时间
+const daterange = ref({
+  start_time: '',
+  end_time: ''
+})
+const multipleSelection = ref<any[]>([])
 
 const ChatRecordRef = ref()
 const loading = ref(false)
@@ -174,6 +233,8 @@ const paginationConfig = reactive({
   page_size: 20,
   total: 0
 })
+const dialogVisible = ref(false)
+const days = ref<number>(180)
 const tableData = ref<any[]>([])
 const tableIndexMap = computed<Dict<number>>(() => {
   return tableData.value
@@ -182,7 +243,8 @@ const tableIndexMap = computed<Dict<number>>(() => {
     }))
     .reduce((pre, next) => ({ ...pre, ...next }), {})
 })
-const history_day = ref(7)
+const history_day = ref<number | string>(7)
+
 const search = ref('')
 const detail = ref<any>(null)
 
@@ -279,6 +341,10 @@ const setRowClass = ({ row }: any) => {
   return currentChatId.value === row?.id ? 'highlight' : ''
 }
 
+const handleSelectionChange = (val: any[]) => {
+  multipleSelection.value = val
+}
+
 function deleteLog(row: any) {
   MsgConfirm(`是否删除对话：${row.abstract} ?`, `删除后无法恢复，请谨慎操作。`, {
     confirmButtonText: '删除',
@@ -299,15 +365,11 @@ function handleSizeChange() {
   getList()
 }
 
-function changeHandle(val: number) {
-  history_day.value = val
-  paginationConfig.current_page = 1
-  getList()
-}
-
 function getList() {
+  paginationConfig.current_page = 1
   let obj: any = {
-    history_day: history_day.value,
+    start_time: daterange.value.start_time,
+    end_time: daterange.value.end_time,
     ...filter.value
   }
   if (search.value) {
@@ -325,27 +387,65 @@ function getList() {
 function getDetail() {
   application.asyncGetApplicationDetail(id as string, loading).then((res: any) => {
     detail.value = res.data
+    days.value = res.data.clean_time
   })
 }
-
 const exportLog = () => {
+  const arr: string[] = []
+  multipleSelection.value.map((v) => {
+    if (v) {
+      arr.push(v.id)
+    }
+  })
   if (detail.value) {
     let obj: any = {
-      history_day: history_day.value,
+      start_time: daterange.value.start_time,
+      end_time: daterange.value.end_time,
       ...filter.value
     }
     if (search.value) {
       obj = { ...obj, abstract: search.value }
     }
-    logApi.exportChatLog(detail.value.id, detail.value.name, obj, loading)
+
+    logApi.exportChatLog(detail.value.id, detail.value.name, obj, { select_ids: arr }, loading)
   }
 }
+
 function refresh() {
   getList()
 }
 
-onMounted(() => {
+function changeDayRangeHandle(val: string) {
+  daterange.value.start_time = val[0]
+  daterange.value.end_time = val[1]
   getList()
+}
+
+function changeDayHandle(val: number | string) {
+  if (val !== 'other') {
+    daterange.value.start_time = beforeDay(val)
+    daterange.value.end_time = nowDate
+    getList()
+  }
+}
+
+function saveCleanTime() {
+  const data = detail.value
+  data.clean_time = days.value
+  application
+    .asyncPutApplication(id as string, data, loading)
+    .then(() => {
+      MsgSuccess('保存成功')
+      dialogVisible.value = false
+      getDetail()
+    })
+    .catch(() => {
+      dialogVisible.value = false
+    })
+}
+
+onMounted(() => {
+  changeDayHandle(history_day.value)
   getDetail()
 })
 </script>

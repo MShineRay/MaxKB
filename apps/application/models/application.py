@@ -49,6 +49,7 @@ class Application(AppModelMixin):
     dataset_setting = models.JSONField(verbose_name="数据集参数设置", default=get_dataset_setting_dict)
     model_setting = models.JSONField(verbose_name="模型参数相关设置", default=get_model_setting_dict)
     model_params_setting = models.JSONField(verbose_name="模型参数相关设置", default={})
+    tts_model_params_setting = models.JSONField(verbose_name="模型参数相关设置", default={})
     problem_optimization = models.BooleanField(verbose_name="问题优化", default=False)
     icon = models.CharField(max_length=256, verbose_name="应用icon", default="/ui/favicon.ico")
     work_flow = models.JSONField(verbose_name="工作流数据", default=dict)
@@ -64,6 +65,7 @@ class Application(AppModelMixin):
     tts_model_enable = models.BooleanField(verbose_name="语音合成模型是否启用", default=False)
     stt_model_enable = models.BooleanField(verbose_name="语音识别模型是否启用", default=False)
     tts_type = models.CharField(verbose_name="语音播放类型", max_length=20, default="BROWSER")
+    clean_time = models.IntegerField(verbose_name="清理时间", default=180)
 
     @staticmethod
     def get_default_model_prompt():
@@ -86,6 +88,9 @@ class Application(AppModelMixin):
 class WorkFlowVersion(AppModelMixin):
     id = models.UUIDField(primary_key=True, max_length=128, default=uuid.uuid1, editable=False, verbose_name="主键id")
     application = models.ForeignKey(Application, on_delete=models.CASCADE)
+    name = models.CharField(verbose_name="版本名称", max_length=128, default="")
+    publish_user_id = models.UUIDField(verbose_name="发布者id", max_length=128, default=None, null=True)
+    publish_user_name = models.CharField(verbose_name="发布者名称", max_length=128, default="")
     work_flow = models.JSONField(verbose_name="工作流数据", default=dict)
 
     class Meta:

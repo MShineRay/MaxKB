@@ -94,6 +94,17 @@ class Model(APIView):
             return result.success(
                 ModelSerializer.ModelParams(data={'id': model_id, 'user_id': request.user.id}).get_model_params())
 
+        @action(methods=['PUT'], detail=False)
+        @swagger_auto_schema(operation_summary="保存模型参数表单",
+                             operation_id="保存模型参数表单",
+                             manual_parameters=ProvideApi.ModelForm.get_request_params_api(),
+                             tags=["模型"])
+        @has_permissions(PermissionConstants.MODEL_READ)
+        def put(self, request: Request, model_id: str):
+            return result.success(
+                ModelSerializer.ModelParamsForm(data={'id': model_id, 'user_id': request.user.id})
+                .save_model_params_form(request.data))
+
     class Operate(APIView):
         authentication_classes = [TokenAuth]
 
@@ -151,6 +162,14 @@ class Provide(APIView):
         , tags=["模型"])
     @has_permissions(PermissionConstants.MODEL_READ)
     def get(self, request: Request):
+        model_type = request.query_params.get('model_type')
+        if model_type:
+            providers = []
+            for key in ModelProvideConstants.__members__:
+                if len([item for item in ModelProvideConstants[key].value.get_model_type_list() if
+                        item['value'] == model_type]) > 0:
+                    providers.append(ModelProvideConstants[key].value.get_model_provide_info().to_dict())
+            return result.success(providers)
         return result.success(
             [ModelProvideConstants[key].value.get_model_provide_info().to_dict() for key in
              ModelProvideConstants.__members__])

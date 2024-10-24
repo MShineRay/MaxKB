@@ -4,8 +4,42 @@ from typing import Dict
 
 from common import forms
 from common.exception.app_exception import AppApiException
-from common.forms import BaseForm
+from common.forms import BaseForm, TooltipLabel
 from setting.models_provider.base_model_provider import BaseModelCredential, ValidCode
+
+
+class AliyunBaiLianTTSModelGeneralParams(BaseForm):
+    voice = forms.SingleSelect(
+        TooltipLabel('音色', '中文音色可支持中英文混合场景'),
+        required=True, default_value='longxiaochun',
+        text_field='value',
+        value_field='value',
+        option_list=[
+            {'text': '龙小淳', 'value': 'longxiaochun'},
+            {'text': '龙小夏', 'value': 'longxiaoxia'},
+            {'text': '龙小诚', 'value': 'longxiaocheng'},
+            {'text': '龙小白', 'value': 'longxiaobai'},
+            {'text': '龙老铁', 'value': 'longlaotie'},
+            {'text': '龙书', 'value': 'longshu'},
+            {'text': '龙硕', 'value': 'longshuo'},
+            {'text': '龙婧', 'value': 'longjing'},
+            {'text': '龙妙', 'value': 'longmiao'},
+            {'text': '龙悦', 'value': 'longyue'},
+            {'text': '龙媛', 'value': 'longyuan'},
+            {'text': '龙飞', 'value': 'longfei'},
+            {'text': '龙杰力豆', 'value': 'longjielidou'},
+            {'text': '龙彤', 'value': 'longtong'},
+            {'text': '龙祥', 'value': 'longxiang'},
+            {'text': 'Stella', 'value': 'loongstella'},
+            {'text': 'Bella', 'value': 'loongbella'},
+        ])
+    speech_rate = forms.SliderField(
+        TooltipLabel('语速', '[0.5,2]，默认为1，通常保留一位小数即可'),
+        required=True, default_value=1,
+        _min=0.5,
+        _max=2,
+        _step=0.1,
+        precision=1)
 
 
 class AliyunBaiLianTTSModelCredential(BaseForm, BaseModelCredential):
@@ -38,6 +72,5 @@ class AliyunBaiLianTTSModelCredential(BaseForm, BaseModelCredential):
     def encryption_dict(self, model: Dict[str, object]):
         return {**model, 'api_key': super().encryption(model.get('api_key', ''))}
 
-
     def get_model_params_setting_form(self, model_name):
-        pass
+        return AliyunBaiLianTTSModelGeneralParams()

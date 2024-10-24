@@ -122,11 +122,17 @@ const putAccessToken: (
  "access_token": "string"
  }
  */
-const postAppAuthentication: (access_token: string, loading?: Ref<boolean>) => Promise<any> = (
-  access_token,
-  loading
-) => {
-  return post(`${prefix}/authentication`, { access_token }, undefined, loading)
+const postAppAuthentication: (
+  access_token: string,
+  loading?: Ref<boolean>,
+  authentication_value?: any
+) => Promise<any> = (access_token, loading, authentication_value) => {
+  return post(
+    `${prefix}/authentication`,
+    { access_token: access_token, authentication_value },
+    undefined,
+    loading
+  )
 }
 
 /**
@@ -344,7 +350,7 @@ const postSpeechToText: (
 }
 
 /**
- * 语音转文本
+ * 文本转语音
  */
 const postTextToSpeech: (
   application_id: String,
@@ -352,6 +358,17 @@ const postTextToSpeech: (
   loading?: Ref<boolean>
 ) => Promise<Result<any>> = (application_id, data, loading) => {
   return download(`${prefix}/${application_id}/text_to_speech`, 'post', data, undefined, loading)
+}
+
+/**
+ * 播放测试文本
+ */
+const playDemoText: (
+  application_id: String,
+  data: any,
+  loading?: Ref<boolean>
+) => Promise<Result<any>> = (application_id, data, loading) => {
+  return download(`${prefix}/${application_id}/play_demo_text`, 'post', data, undefined, loading)
 }
 /**
  * 获取平台状态
@@ -387,6 +404,57 @@ const updatePlatformStatus: (application_id: string, data: any) => Promise<Resul
 ) => {
   return post(`/platform/${application_id}/status`, data)
 }
+/**
+ * 验证密码
+ */
+const validatePassword: (
+  application_id: string,
+  password: string,
+  loading?: Ref<boolean>
+) => Promise<Result<any>> = (application_id, password, loading) => {
+  return get(`/application/${application_id}/auth/${password}`, undefined, loading)
+}
+
+/**
+ * workflow历史版本
+ */
+const getWorkFlowVersion: (
+  application_id: string,
+  loading?: Ref<boolean>
+) => Promise<Result<any>> = (application_id, loading) => {
+  return get(`/application/${application_id}/work_flow_version`, undefined, loading)
+}
+
+/**
+ * workflow历史版本详情
+ */
+const getWorkFlowVersionDetail: (
+  application_id: string,
+  application_version_id: string,
+  loading?: Ref<boolean>
+) => Promise<Result<any>> = (application_id, application_version_id, loading) => {
+  return get(
+    `/application/${application_id}/work_flow_version/${application_version_id}`,
+    undefined,
+    loading
+  )
+}
+/**
+ * 修改workflow历史版本
+ */
+const putWorkFlowVersion: (
+  application_id: string,
+  application_version_id: string,
+  data: any,
+  loading?: Ref<boolean>
+) => Promise<Result<any>> = (application_id, application_version_id, data, loading) => {
+  return put(
+    `/application/${application_id}/work_flow_version/${application_version_id}`,
+    data,
+    undefined,
+    loading
+  )
+}
 
 export default {
   getAllAppilcation,
@@ -419,5 +487,10 @@ export default {
   getPlatformStatus,
   getPlatformConfig,
   updatePlatformConfig,
-  updatePlatformStatus
+  updatePlatformStatus,
+  validatePassword,
+  getWorkFlowVersion,
+  getWorkFlowVersionDetail,
+  putWorkFlowVersion,
+  playDemoText
 }

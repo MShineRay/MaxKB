@@ -245,6 +245,12 @@ h5 {
   align-items: center;
 }
 
+.flex-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: space-between;
+}
+
 .align-center {
   align-items: center;
 }
@@ -380,7 +386,7 @@ h5 {
 
 /* tag */
 .default-tag {
-  background: var(--el-color-primary-light-7);
+  background: var(--el-color-primary-light-8);
   color: var(--el-color-primary);
   border: none;
 }
@@ -491,6 +497,9 @@ h5 {
 
 .avatar-green {
   background: #34c724;
+}
+.avatar-grey {
+  background: #bbbfc4;
 }
 
 .success {

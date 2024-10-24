@@ -1,6 +1,11 @@
 <template>
-  <div class="chat-pc layout-bg" :class="classObj" v-loading="loading">
-    <div class="chat-pc__header" :class="!isDefaultTheme ? 'custom-header' : ''">
+  <div
+    class="chat-pc layout-bg"
+    :class="classObj"
+    v-loading="loading"
+    :style="{ '--el-color-primary': applicationDetail?.custom_theme?.theme_color }"
+  >
+    <div class="chat-pc__header" :style="customStyle">
       <div class="flex align-center">
         <div class="mr-12 ml-24 flex">
           <AppAvatar
@@ -19,134 +24,134 @@
             :size="32"
           />
         </div>
-
         <h4>{{ applicationDetail?.name }}</h4>
       </div>
     </div>
-    <div class="flex">
-      <div class="chat-pc__left border-r">
-        <div class="p-24 pb-0">
-          <el-button class="add-button w-full primary" @click="newChat">
-            <el-icon>
-              <Plus />
-            </el-icon>
-            <span class="ml-4">新建对话</span>
-          </el-button>
-          <p class="mt-20 mb-8">历史记录</p>
-        </div>
-        <div class="left-height pt-0">
-          <el-scrollbar>
-            <div class="p-8 pt-0">
-              <common-list
-                :data="chatLogeData"
-                class="mt-8"
-                v-loading="left_loading"
-                :defaultActive="currentChatId"
-                @click="clickListHandle"
-                @mouseenter="mouseenter"
-                @mouseleave="mouseId = ''"
-              >
-                <template #default="{ row }">
-                  <div class="flex-between">
-                    <auto-tooltip :content="row.abstract">
-                      {{ row.abstract }}
-                    </auto-tooltip>
-                    <div @click.stop v-if="mouseId === row.id && row.id !== 'new'">
-                      <el-button style="padding: 0" link @click.stop="deleteLog(row)">
-                        <el-icon><Delete /></el-icon>
-                      </el-button>
+    <div>
+      <div class="flex">
+        <div class="chat-pc__left border-r">
+          <div class="p-24 pb-0">
+            <el-button class="add-button w-full primary" @click="newChat">
+              <el-icon>
+                <Plus />
+              </el-icon>
+              <span class="ml-4">新建对话</span>
+            </el-button>
+            <p class="mt-20 mb-8">历史记录</p>
+          </div>
+          <div class="left-height pt-0">
+            <el-scrollbar>
+              <div class="p-8 pt-0">
+                <common-list
+                  :data="chatLogData"
+                  class="mt-8"
+                  v-loading="left_loading"
+                  :defaultActive="currentChatId"
+                  @click="clickListHandle"
+                  @mouseenter="mouseenter"
+                  @mouseleave="mouseId = ''"
+                >
+                  <template #default="{ row }">
+                    <div class="flex-between">
+                      <auto-tooltip :content="row.abstract">
+                        {{ row.abstract }}
+                      </auto-tooltip>
+                      <div @click.stop v-if="mouseId === row.id && row.id !== 'new'">
+                        <el-button style="padding: 0" link @click.stop="deleteLog(row)">
+                          <el-icon><Delete /></el-icon>
+                        </el-button>
+                      </div>
                     </div>
-                  </div>
-                </template>
+                  </template>
 
-                <template #empty>
-                  <div class="text-center">
-                    <el-text type="info">暂无历史记录</el-text>
-                  </div>
-                </template>
-              </common-list>
-            </div>
-            <div v-if="chatLogeData.length" class="gradient-divider lighter mt-8">
-              <span>仅显示最近 20 条对话</span>
-            </div>
-          </el-scrollbar>
+                  <template #empty>
+                    <div class="text-center">
+                      <el-text type="info">暂无历史记录</el-text>
+                    </div>
+                  </template>
+                </common-list>
+              </div>
+              <div v-if="chatLogData?.length" class="gradient-divider lighter mt-8">
+                <span>仅显示最近 20 条对话</span>
+              </div>
+            </el-scrollbar>
+          </div>
         </div>
-      </div>
-      <div class="chat-pc__right">
-        <div class="right-header border-b mb-24 p-16-24 flex-between">
-          <h4 class="ellipsis-1" style="width: 70%">
-            {{ currentChatName }}
-          </h4>
+        <div class="chat-pc__right">
+          <div class="right-header border-b mb-24 p-16-24 flex-between">
+            <h4 class="ellipsis-1" style="width: 70%">
+              {{ currentChatName }}
+            </h4>
 
-          <span class="flex align-center" v-if="currentRecordList.length">
-            <AppIcon
-              v-if="paginationConfig.total"
-              iconName="app-chat-record"
-              class="info mr-8"
-              style="font-size: 16px"
-            ></AppIcon>
-            <span v-if="paginationConfig.total" class="lighter">
-              {{ paginationConfig.total }} 条提问
+            <span class="flex align-center" v-if="currentRecordList.length">
+              <AppIcon
+                v-if="paginationConfig.total"
+                iconName="app-chat-record"
+                class="info mr-8"
+                style="font-size: 16px"
+              ></AppIcon>
+              <span v-if="paginationConfig.total" class="lighter">
+                {{ paginationConfig.total }} 条提问
+              </span>
+              <el-dropdown class="ml-8">
+                <AppIcon iconName="app-export" class="cursor" title="导出聊天记录"></AppIcon>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item @click="exportMarkdown">导出 Markdown</el-dropdown-item>
+                    <el-dropdown-item @click="exportHTML">导出 HTML</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </span>
-            <el-dropdown class="ml-8">
-              <AppIcon iconName="app-export" class="cursor" title="导出聊天记录"></AppIcon>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item @click="exportMarkdown">导出 Markdown</el-dropdown-item>
-                  <el-dropdown-item @click="exportHTML">导出 HTML</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </span>
-        </div>
-        <div class="right-height">
-          <!-- 对话 -->
-          <AiChat
-            ref="AiChatRef"
-            v-model:data="applicationDetail"
-            :available="applicationAvailable"
-            :appId="applicationDetail?.id"
-            :record="currentRecordList"
-            :chatId="currentChatId"
-            @refresh="refresh"
-            @scroll="handleScroll"
-          >
-          </AiChat>
+          </div>
+          <div class="right-height">
+            <AiChat
+              ref="AiChatRef"
+              v-model:data="applicationDetail"
+              :available="applicationAvailable"
+              :appId="applicationDetail?.id"
+              :record="currentRecordList"
+              :chatId="currentChatId"
+              @refresh="refresh"
+              @scroll="handleScroll"
+            >
+            </AiChat>
+          </div>
         </div>
       </div>
-    </div>
-
-    <div class="collapse">
-      <el-button @click="isCollapse = !isCollapse">
-        <el-icon> <component :is="isCollapse ? 'Fold' : 'Expand'" /></el-icon>
-      </el-button>
+      <div class="collapse">
+        <el-button @click="isCollapse = !isCollapse">
+          <el-icon> <component :is="isCollapse ? 'Fold' : 'Expand'" /></el-icon>
+        </el-button>
+      </div>
     </div>
   </div>
 </template>
+
 <script setup lang="ts">
-import { reactive, ref, onMounted, nextTick, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, onMounted, nextTick, computed } from 'vue'
 import { marked } from 'marked'
 import { saveAs } from 'file-saver'
 import { isAppIcon } from '@/utils/application'
 import useStore from '@/stores'
-
 import useResize from '@/layout/hooks/useResize'
+
 useResize()
 
-const route = useRoute()
-
-const {
-  params: { accessToken }
-} = route as any
-
-const { application, user, log, common } = useStore()
+const { user, log, common } = useStore()
 
 const isDefaultTheme = computed(() => {
   return user.isDefaultTheme()
 })
 
 const isCollapse = ref(false)
+
+const customStyle = computed(() => {
+  return {
+    background: applicationDetail.value?.custom_theme?.theme_color,
+    color: applicationDetail.value?.custom_theme?.header_font_color
+  }
+})
 
 const classObj = computed(() => {
   return {
@@ -160,13 +165,22 @@ const newObj = {
   id: 'new',
   abstract: '新建对话'
 }
-
+const props = defineProps<{
+  application_profile: any
+  applicationAvailable: boolean
+}>()
 const AiChatRef = ref()
 const loading = ref(false)
 const left_loading = ref(false)
-const applicationDetail = ref<any>({})
-const applicationAvailable = ref<boolean>(true)
-const chatLogeData = ref<any[]>([])
+
+const applicationDetail = computed({
+  get: () => {
+    return props.application_profile
+  },
+  set: (v) => {}
+})
+
+const chatLogData = ref<any[]>([])
 
 const paginationConfig = ref({
   current_page: 1,
@@ -209,37 +223,12 @@ function handleScroll(event: any) {
   }
 }
 
-function getAccessToken(token: string) {
-  application
-    .asyncAppAuthentication(token, loading)
-    .then(() => {
-      getAppProfile()
-    })
-    .catch(() => {
-      applicationAvailable.value = false
-    })
-}
-
-function getAppProfile() {
-  application
-    .asyncGetAppProfile(loading)
-    .then((res: any) => {
-      applicationDetail.value = res.data
-      if (res.data?.show_history || !user.isEnterprise()) {
-        getChatLog(applicationDetail.value.id)
-      }
-    })
-    .catch(() => {
-      applicationAvailable.value = false
-    })
-}
-
 function newChat() {
-  if (!chatLogeData.value.some((v) => v.id === 'new')) {
+  if (!chatLogData.value.some((v) => v.id === 'new')) {
     paginationConfig.value.current_page = 1
     paginationConfig.value.total = 0
     currentRecordList.value = []
-    chatLogeData.value.unshift(newObj)
+    chatLogData.value.unshift(newObj)
   } else {
     paginationConfig.value.current_page = 1
     paginationConfig.value.total = 0
@@ -259,9 +248,9 @@ function getChatLog(id: string, refresh?: boolean) {
   }
 
   log.asyncGetChatLogClient(id, page, left_loading).then((res: any) => {
-    chatLogeData.value = res.data.records
+    chatLogData.value = res.data.records
     if (refresh) {
-      currentChatName.value = chatLogeData.value[0].abstract
+      currentChatName.value = chatLogData.value?.[0].abstract
     }
   })
 }
@@ -336,9 +325,19 @@ async function exportHTML(): Promise<void> {
   saveAs(blob, suggestedName)
 }
 
+/**
+ *初始化历史对话记录
+ */
+const init = () => {
+  if (
+    (applicationDetail.value.show_history || !user.isEnterprise()) &&
+    props.applicationAvailable
+  ) {
+    getChatLog(applicationDetail.value.id)
+  }
+}
 onMounted(() => {
-  user.changeUserType(2)
-  getAccessToken(accessToken)
+  init()
 })
 </script>
 <style lang="scss">
