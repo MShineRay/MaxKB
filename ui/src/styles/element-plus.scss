@@ -5,6 +5,9 @@
   --el-border-color: #dee0e3;
   --el-text-color-regular: #1f2329;
   --el-color-info: #8f959e !important;
+  --el-disabled-bg-color: #eff0f1;
+  --el-disabled-border-color: #bbbfc4;
+  --el-text-color-primary: #1f2329;
 }
 
 .el-button {
@@ -26,6 +29,12 @@
   &.is-link:focus {
     background: none;
     border: none;
+  }
+}
+.el-button--text {
+  border: none !important;
+  &:focus {
+    border: none !important;
   }
 }
 .el-button--large {
@@ -53,6 +62,7 @@
 }
 .el-form-item__label {
   font-weight: 400;
+  width: 100%;
 }
 
 .el-form-item__error {
@@ -132,6 +142,7 @@
 
 .el-card {
   --el-card-padding: calc(var(--app-base-px) * 2);
+  color: var(--el-text-color-regular);
 }
 .el-dropdown {
   color: var(--app-text-color);
@@ -249,12 +260,18 @@
   padding: 1px 12px !important;
 }
 
+.el-input.is-disabled .el-input__wrapper {
+}
+
 .el-input--large {
   .el-input__inner {
     font-size: 16px;
   }
 }
 
+.el-select__placeholder {
+  font-weight: 400;
+}
 .el-select__placeholder.is-transparent {
   color: var(--app-input-color-placeholder);
   font-weight: 400;
@@ -262,6 +279,9 @@
 
 .el-select-group .el-select-dropdown__item {
   padding-left: 11px;
+}
+.el-select-dropdown__item {
+  font-weight: 400;
 }
 
 .el-select__caret {

@@ -29,7 +29,7 @@ def write_context(step_variable: Dict, global_variable: Dict, node, workflow):
         if workflow.is_result(node, NodeResult(step_variable, global_variable)) and 'result' in step_variable:
             result = str(step_variable['result']) + '\n'
             yield result
-            workflow.answer += result
+            node.answer_text = result
     node.context['run_time'] = time.time() - node.context['start_time']
 
 
@@ -62,6 +62,8 @@ def valid_reference_value(_type, value, name):
 def convert_value(name: str, value, _type, is_required, source, node):
     if not is_required and value is None:
         return None
+    if not is_required and source == 'reference' and (value is None or len(value) == 0):
+        return None
     if source == 'reference':
         value = node.workflow_manage.get_reference_field(
             value[0],
@@ -89,6 +91,10 @@ def convert_value(name: str, value, _type, is_required, source, node):
 
 
 class BaseFunctionLibNodeNode(IFunctionLibNode):
+    def save_context(self, details, workflow_manage):
+        self.context['result'] = details.get('result')
+        self.answer_text = details.get('result')
+
     def execute(self, function_lib_id, input_field_list, **kwargs) -> NodeResult:
         function_lib = QuerySet(FunctionLib).filter(id=function_lib_id).first()
         if not function_lib.is_active:

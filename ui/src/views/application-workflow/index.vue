@@ -48,7 +48,7 @@
               <el-dropdown-item>
                 <AppIcon iconName="app-save-outlined"></AppIcon>
                 自动保存
-                <div @click.stop class="ml-4">
+                <div class="ml-4">
                   <el-switch size="small" v-model="isSave" @change="changeSave" />
                 </div>
               </el-dropdown-item>
@@ -120,7 +120,7 @@
           </div>
         </div>
         <div class="scrollbar-height">
-          <AiChat :data="detail" :debug="true"></AiChat>
+          <AiChat :application-details="detail" :type="'debug-ai-chat'"></AiChat>
         </div>
       </div>
     </el-collapse-transition>
@@ -134,14 +134,14 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import Workflow from '@/workflow/index.vue'
 import DropdownMenu from '@/views/application-workflow/component/DropdownMenu.vue'
 import PublishHistory from '@/views/application-workflow/component/PublishHistory.vue'
 import applicationApi from '@/api/application'
 import { isAppIcon } from '@/utils/application'
-import { MsgSuccess, MsgConfirm, MsgError } from '@/utils/message'
+import { MsgSuccess, MsgError } from '@/utils/message'
 import { datetimeFormat } from '@/utils/time'
 import useStore from '@/stores'
 import { WorkFlowInstance } from '@/workflow/common/validate'
@@ -176,39 +176,47 @@ const currentVersion = ref<any>({})
 function clickoutsideHistory() {
   if (!disablePublic.value) {
     showHistory.value = false
+    disablePublic.value = false
   }
 }
 
 function refreshVersion(item?: any) {
-  if (item) { 
-    getHistortyDetail(item.id)
+  if (item) {
+    renderGraphData(item)
   }
-  initInterval()
+  if (hasPermission(`APPLICATION:MANAGE:${id}`, 'AND') && isSave.value) {
+    initInterval()
+  }
   showHistory.value = false
   disablePublic.value = false
 }
+
 function checkVersion(item: any) {
   disablePublic.value = true
-  getHistortyDetail(item.id)
   currentVersion.value = item
+  renderGraphData(item)
   closeInterval()
 }
 
-function getHistortyDetail(versionId: string) {
-  applicationApi.getWorkFlowVersionDetail(id, versionId, loading).then((res: any) => {
-    res.data?.work_flow['nodes'].map((v: any) => {
-      v['properties']['noRender'] = true
-    })
-    detail.value.stt_model_id = res.data.stt_model
-    detail.value.tts_model_id = res.data.tts_model
-    detail.value.tts_type = res.data.tts_type
-    saveTime.value = res.data?.update_time
+function renderGraphData(item: any) {
+  item.work_flow['nodes'].map((v: any) => {
+    v['properties']['noRender'] = true
+  })
+  detail.value.work_flow = item.work_flow
+  saveTime.value = item?.update_time
+  workflowRef.value?.clearGraphData()
+  nextTick(() => {
+    workflowRef.value?.render(item.work_flow)
   })
 }
 
 function closeHistory() {
   getDetail()
+  if (hasPermission(`APPLICATION:MANAGE:${id}`, 'AND') && isSave.value) {
+    initInterval()
+  }
   showHistory.value = false
+  disablePublic.value = false
 }
 
 function openHistory() {
@@ -233,13 +241,15 @@ function onmousedown(item: any) {
 function clickoutside() {
   showPopover.value = false
 }
-function publicHandle() {
+async function publicHandle() {
+  // 后执行发布
   workflowRef.value
     ?.validate()
-    .then(() => {
+    .then(async () => {
       const obj = {
         work_flow: getGraphData()
       }
+      await application.asyncPutApplication(id, obj)
       const workflow = new WorkFlowInstance(obj.work_flow)
       try {
         workflow.is_valid()
@@ -248,7 +258,6 @@ function publicHandle() {
         return
       }
       applicationApi.putPublishApplication(id as String, obj, loading).then(() => {
-        getDetail()
         MsgSuccess('发布成功')
       })
     })
@@ -306,7 +315,7 @@ function getGraphData() {
 }
 
 function getDetail() {
-  application.asyncGetApplicationDetail(id, loading).then((res: any) => {
+  application.asyncGetApplicationDetail(id).then((res: any) => {
     res.data?.work_flow['nodes'].map((v: any) => {
       v['properties']['noRender'] = true
     })
@@ -315,6 +324,10 @@ function getDetail() {
     detail.value.tts_model_id = res.data.tts_model
     detail.value.tts_type = res.data.tts_type
     saveTime.value = res.data?.update_time
+    workflowRef.value?.clearGraphData()
+    nextTick(() => {
+      workflowRef.value?.renderGraphData(detail.value.work_flow)
+    })
   })
 }
 
@@ -353,7 +366,7 @@ onMounted(() => {
   const workflowAutoSave = localStorage.getItem('workflowAutoSave')
   isSave.value = workflowAutoSave === 'true' ? true : false
   // 初始化定时任务
-  if (hasPermission(`APPLICATION:MANAGE:${id}`, 'AND') && workflowAutoSave) {
+  if (hasPermission(`APPLICATION:MANAGE:${id}`, 'AND') && isSave.value) {
     initInterval()
   }
 })
@@ -388,12 +401,7 @@ onBeforeUnmount(() => {
   position: relative;
   border-radius: 8px;
   border: 1px solid #ffffff;
-  background: linear-gradient(
-      188deg,
-      rgba(235, 241, 255, 0.2) 39.6%,
-      rgba(231, 249, 255, 0.2) 94.3%
-    ),
-    #eff0f1;
+  background: var(--dialog-bg-gradient-color);
   box-shadow: 0px 4px 8px 0px rgba(31, 35, 41, 0.1);
   position: fixed;
   bottom: 16px;

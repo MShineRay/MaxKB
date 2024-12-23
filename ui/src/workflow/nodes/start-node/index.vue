@@ -61,8 +61,41 @@ const refreshFieldList = () => {
 }
 props.nodeModel.graphModel.eventCenter.on('refreshFieldList', refreshFieldList)
 
+const refreshFileUploadConfig = () => {
+  let fields = cloneDeep(props.nodeModel.properties.config.fields)
+  const form_data = props.nodeModel.graphModel.nodes
+    .filter((v: any) => v.id === 'base-node')
+    .filter((v: any) => v.properties.node_data.file_upload_enable)
+    .map((v: any) => cloneDeep(v.properties.node_data.file_upload_setting))
+    .filter((v: any) => v)
+
+  fields = fields.filter((item: any) => item.value !== 'image' && item.value !== 'document' && item.value !== 'audio' && item.value !== 'video')
+
+  if (form_data.length === 0) {
+    set(props.nodeModel.properties.config, 'fields', fields)
+    return
+  }
+  let fileUploadFields = []
+  if (form_data[0].document) {
+    fileUploadFields.push({ label: '文档', value: 'document' })
+  }
+  if (form_data[0].image) {
+    fileUploadFields.push({ label: '图片', value: 'image' })
+  }
+  if (form_data[0].audio) {
+    fileUploadFields.push({ label: '音频', value: 'audio' })
+  }
+  if (form_data[0].video) {
+    fileUploadFields.push({ label: '视频', value: 'video' })
+  }
+
+  set(props.nodeModel.properties.config, 'fields', [...fields, ...fileUploadFields])
+}
+props.nodeModel.graphModel.eventCenter.on('refreshFileUploadConfig', refreshFileUploadConfig)
+
 onMounted(() => {
   refreshFieldList()
+  refreshFileUploadConfig()
 })
 </script>
 <style lang="scss" scoped></style>

@@ -20,7 +20,11 @@
           </span>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item v-for="item in modelTypeOptions" :key="item.value" @click="checkModelType(item.value)">
+              <el-dropdown-item
+                v-for="item in modelTypeOptions"
+                :key="item.value"
+                @click="checkModelType(item.value)"
+              >
                 <span>{{ item.text }}</span>
                 <el-icon v-if="currentModelType === item.text"><Check /></el-icon>
               </el-dropdown-item>
@@ -52,19 +56,20 @@ const list_provider = ref<Array<Provider>>([])
 const currentModelType = ref('')
 
 const modelTypeOptions = ref([
-  { text: '全部模型', value:''},
-  { text: '大语言模型', value:'LLM'},
-  { text: '向量模型', value:'EMBEDDING'},
-  { text: '重排模型', value:'RERANKER'},
-  { text: '语音识别', value:'STT'},
-  { text: '语音合成', value:'TTS'}
+  { text: '全部模型', value: '' },
+  { text: '大语言模型', value: 'LLM' },
+  { text: '向量模型', value: 'EMBEDDING' },
+  { text: '重排模型', value: 'RERANKER' },
+  { text: '语音识别', value: 'STT' },
+  { text: '语音合成', value: 'TTS' },
+  { text: '图片理解', value: 'IMAGE' },
+  { text: '图片生成', value: 'TTI' },
 ])
 
 const open = () => {
   dialogVisible.value = true
-  ModelApi.getProvider(loading).then((ok) => {
-    list_provider.value = ok.data
-  })
+  const option = modelTypeOptions.value.find((item) => item.text === currentModelType.value)
+  checkModelType(option ? option.value : '')
 }
 
 const close = () => {
@@ -72,9 +77,12 @@ const close = () => {
 }
 
 const checkModelType = (model_type: string) => {
-  currentModelType.value = modelTypeOptions.value.filter((item) => item.value === model_type)[0].text
+  currentModelType.value = modelTypeOptions.value.filter(
+    (item) => item.value === model_type
+  )[0].text
   ModelApi.getProviderByModelType(model_type, loading).then((ok) => {
     list_provider.value = ok.data
+    list_provider.value.sort((a, b) => a.provider.localeCompare(b.provider))
   })
 }
 

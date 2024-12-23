@@ -4,6 +4,7 @@ from typing import Dict
 
 import dashscope
 from dashscope.audio.asr import (Recognition)
+from pydub import AudioSegment
 
 from setting.models_provider.base_model_provider import MaxKBBaseModel
 from setting.models_provider.impl.base_stt import BaseSpeechToText
@@ -49,6 +50,13 @@ class AliyunBaiLianSpeechToText(MaxKBBaseModel, BaseSpeechToText):
             temp_file_path = temp_file.name
 
         try:
+            audio = AudioSegment.from_file(temp_file_path)
+            if audio.channels != 1:
+                audio = audio.set_channels(1)
+            audio = audio.set_frame_rate(16000)
+
+            # 将转换后的音频文件保存到临时文件中
+            audio.export(temp_file_path, format='mp3')
             # 识别临时文件
             result = recognition.call(temp_file_path)
             text = ''

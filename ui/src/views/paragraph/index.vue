@@ -104,8 +104,9 @@
                 >
                   <div class="active-button" @click.stop>
                     <el-switch
+                      :loading="loading"
                       v-model="item.is_active"
-                      @change="changeState($event, item)"
+                      :before-change="() => changeState(item)"
                       size="small"
                     />
                   </div>
@@ -123,7 +124,7 @@
                             <el-dropdown-menu>
                               <el-dropdown-item @click="openGenerateDialog(item)">
                                 <el-icon><Connection /></el-icon>
-                                生成关联问题</el-dropdown-item
+                                生成问题</el-dropdown-item
                               >
                               <el-dropdown-item @click="openSelectDocumentDialog(item)">
                                 <AppIcon iconName="app-migrate"></AppIcon>
@@ -147,7 +148,7 @@
 
       <div class="mul-operation border-t w-full" v-if="isBatch === true">
         <el-button :disabled="multipleSelection.length === 0" @click="openGenerateDialog()">
-          生成关联问题
+          生成问题
         </el-button>
         <el-button :disabled="multipleSelection.length === 0" @click="openSelectDocumentDialog()">
           迁移
@@ -162,7 +163,6 @@
     <ParagraphDialog ref="ParagraphDialogRef" :title="title" @refresh="refresh" />
     <SelectDocumentDialog ref="SelectDocumentDialogRef" @refresh="refreshMigrateParagraph" />
     <GenerateRelatedDialog ref="GenerateRelatedDialogRef" @refresh="refresh" />
-
   </LayoutContainer>
 </template>
 <script setup lang="ts">
@@ -198,7 +198,7 @@ const multipleSelection = ref<any[]>([])
 
 const paginationConfig = reactive({
   current_page: 1,
-  page_size: 20,
+  page_size: 30,
   total: 0
 })
 
@@ -258,11 +258,20 @@ function searchHandle() {
   getParagraphList()
 }
 
-function changeState(bool: Boolean, row: any) {
+function changeState(row: any) {
   const obj = {
-    is_active: bool
+    is_active: !row.is_active
   }
-  paragraph.asyncPutParagraph(id, documentId, row.id, obj, changeStateloading).then((res) => {})
+  paragraph
+    .asyncPutParagraph(id, documentId, row.id, obj, changeStateloading)
+    .then((res) => {
+      const index = paragraphDetail.value.findIndex((v) => v.id === row.id)
+      paragraphDetail.value[index].is_active = !paragraphDetail.value[index].is_active
+      return true
+    })
+    .catch(() => {
+      return false
+    })
 }
 
 function deleteParagraph(row: any) {
@@ -327,7 +336,6 @@ function refresh(data: any) {
     getParagraphList()
   }
 }
-
 
 const GenerateRelatedDialogRef = ref()
 function openGenerateDialog(row?: any) {

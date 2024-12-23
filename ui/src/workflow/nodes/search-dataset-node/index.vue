@@ -38,7 +38,8 @@
                   <AppAvatar v-else class="mr-8 avatar-blue" shape="square" :size="20">
                     <img src="@/assets/icon_document.svg" style="width: 58%" alt="" />
                   </AppAvatar>
-                  <div class="ellipsis">
+
+                  <div class="ellipsis" :title="relatedObject(datasetList, item, 'id')?.name">
                     {{ relatedObject(datasetList, item, 'id')?.name }}
                   </div>
                 </div>
@@ -197,6 +198,7 @@ function refresh() {
 }
 
 const validate = () => {
+  console.log(DatasetNodeFormRef.value)
   return Promise.all([
     nodeCascaderRef.value.validate(),
     DatasetNodeFormRef.value?.validate()

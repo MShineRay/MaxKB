@@ -11,7 +11,12 @@
             class="flex align-center"
             :style="{ maxWidth: node_status == 200 ? 'calc(100% - 55px)' : 'calc(100% - 85px)' }"
           >
-            <component :is="iconComponent(`${nodeModel.type}-icon`)" class="mr-8" :size="24" />
+            <component
+              :is="iconComponent(`${nodeModel.type}-icon`)"
+              class="mr-8"
+              :size="24"
+              :item="nodeModel?.properties.node_data"
+            />
             <h4 v-if="showOperate(nodeModel.type)" style="max-width: 90%">
               <ReadWrite
                 @mousemove.stop
@@ -26,19 +31,37 @@
             <h4 v-else>{{ nodeModel.properties.stepName }}</h4>
           </div>
 
-          <div
-            @mousemove.stop
-            @mousedown.stop
-            @keydown.stop
-            @click.stop
-            v-if="showOperate(nodeModel.type)"
-          >
-            <el-button text @click="showNode = !showNode" class="mr-4">
-              <el-icon class="arrow-icon" :class="showNode ? 'rotate-180' : ''"
+          <div @mousemove.stop @mousedown.stop @keydown.stop @click.stop>
+            <el-button text @click="showNode = !showNode">
+              <el-icon class="arrow-icon color-secondary" :class="showNode ? 'rotate-180' : ''"
                 ><ArrowDownBold />
               </el-icon>
             </el-button>
-            <el-dropdown :teleported="false" trigger="click">
+            <el-dropdown
+              v-if="showOperate(nodeModel.type)"
+              :teleported="false"
+              trigger="click"
+              placement="bottom-start"
+            >
+              <el-button text>
+                <img src="@/assets/icon_or.svg" alt="" v-if="condition === 'OR'" />
+                <img src="@/assets/icon_and.svg" alt="" v-if="condition === 'AND'" />
+              </el-button>
+              <template #dropdown>
+                <div style="width: 280px" class="p-12-16">
+                  <h5>执行条件</h5>
+                  <p class="mt-8 lighter">
+                    <span>前置</span>
+                    <el-select v-model="condition" size="small" style="width: 60px; margin: 0 8px">
+                      <el-option label="所有" value="AND" />
+                      <el-option label="任一" value="OR" />
+                    </el-select>
+                    <span>连线节点执行完，执行当前节点</span>
+                  </p>
+                </div>
+              </template>
+            </el-dropdown>
+            <el-dropdown v-if="showOperate(nodeModel.type)" :teleported="false" trigger="click">
               <el-button text>
                 <el-icon class="color-secondary"><MoreFilled /></el-icon>
               </el-button>
@@ -52,7 +75,7 @@
           </div>
         </div>
         <el-collapse-transition>
-          <div @mousedown.stop @keydown.stop @click.stop v-if="showNode" class="mt-16">
+          <div @mousedown.stop @keydown.stop @click.stop v-show="showNode" class="mt-16">
             <el-alert
               v-if="node_status != 200"
               class="mb-16"
@@ -94,9 +117,8 @@
         v-if="showAnchor"
         @mousemove.stop
         @mousedown.stop
-        @keydown.stop
         @click.stop
-        @wheel.stop
+        @wheel="handleWheel"
         :show="showAnchor"
         :id="id"
         style="left: 100%; top: 50%; transform: translate(0, -50%)"
@@ -130,7 +152,37 @@ const height = ref<{
 })
 const showAnchor = ref<boolean>(false)
 const anchorData = ref<any>()
-const showNode = ref<boolean>(true)
+
+const condition = computed({
+  set: (v) => {
+    set(props.nodeModel.properties, 'condition', v)
+  },
+  get: () => {
+    if (props.nodeModel.properties.condition) {
+      return props.nodeModel.properties.condition
+    }
+    set(props.nodeModel.properties, 'condition', 'AND')
+    return true
+  }
+})
+const showNode = computed({
+  set: (v) => {
+    set(props.nodeModel.properties, 'showNode', v)
+  },
+  get: () => {
+    if (props.nodeModel.properties.showNode !== undefined) {
+      return props.nodeModel.properties.showNode
+    }
+    set(props.nodeModel.properties, 'showNode', true)
+    return true
+  }
+})
+const handleWheel = (event: any) => {
+  const isCombinationKeyPressed = event.ctrlKey || event.metaKey
+  if (!isCombinationKeyPressed) {
+    event.stopPropagation()
+  }
+}
 const node_status = computed(() => {
   if (props.nodeModel.properties.status) {
     return props.nodeModel.properties.status

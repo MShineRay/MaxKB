@@ -1,63 +1,65 @@
 <template>
-  <div>
-    <el-text type="info">
-      <span class="ml-4">{{ datetimeFormat(data.create_time) }}</span>
-    </el-text>
-  </div>
-  <div>
-    <!-- 语音播放 -->
-    <span v-if="tts">
-      <el-tooltip effect="dark" content="点击播放" placement="top" v-if="!audioPlayerStatus">
-        <el-button text @click="playAnswerText(data?.answer_text)">
-          <AppIcon iconName="app-video-play"></AppIcon>
-        </el-button>
-      </el-tooltip>
-      <el-tooltip v-else effect="dark" content="停止" placement="top">
-        <el-button type="primary" text @click="pausePlayAnswerText()">
-          <AppIcon iconName="app-video-pause"></AppIcon>
+  <div class="flex-between mt-8">
+    <div>
+      <el-text type="info">
+        <span class="ml-4">{{ datetimeFormat(data.create_time) }}</span>
+      </el-text>
+    </div>
+    <div>
+      <!-- 语音播放 -->
+      <span v-if="tts">
+        <el-tooltip effect="dark" content="点击播放" placement="top" v-if="!audioPlayerStatus">
+          <el-button text @click="playAnswerText(data?.answer_text)">
+            <AppIcon iconName="app-video-play"></AppIcon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip v-else effect="dark" content="停止" placement="top">
+          <el-button type="primary" text @click="pausePlayAnswerText()">
+            <AppIcon iconName="app-video-pause"></AppIcon>
+          </el-button>
+        </el-tooltip>
+        <el-divider direction="vertical" />
+      </span>
+      <el-tooltip effect="dark" content="复制" placement="top">
+        <el-button text @click="copyClick(data?.answer_text)">
+          <AppIcon iconName="app-copy"></AppIcon>
         </el-button>
       </el-tooltip>
       <el-divider direction="vertical" />
-    </span>
-    <el-tooltip effect="dark" content="复制" placement="top">
-      <el-button text @click="copyClick(data?.answer_text)">
-        <AppIcon iconName="app-copy"></AppIcon>
-      </el-button>
-    </el-tooltip>
-    <el-divider direction="vertical" />
-    <el-tooltip
-      v-if="data.improve_paragraph_id_list.length === 0"
-      effect="dark"
-      content="修改内容"
-      placement="top"
-    >
-      <el-button text @click="editContent(data)">
-        <el-icon><EditPen /></el-icon>
-      </el-button>
-    </el-tooltip>
+      <el-tooltip
+        v-if="buttonData.improve_paragraph_id_list.length === 0"
+        effect="dark"
+        content="修改内容"
+        placement="top"
+      >
+        <el-button text @click="editContent(data)">
+          <el-icon><EditPen /></el-icon>
+        </el-button>
+      </el-tooltip>
 
-    <el-tooltip v-else effect="dark" content="修改标注" placement="top">
-      <el-button text @click="editMark(data)">
-        <AppIcon iconName="app-document-active" class="primary"></AppIcon>
+      <el-tooltip v-else effect="dark" content="修改标注" placement="top">
+        <el-button text @click="editMark(data)">
+          <AppIcon iconName="app-document-active" class="primary"></AppIcon>
+        </el-button>
+      </el-tooltip>
+
+      <el-divider direction="vertical" v-if="buttonData?.vote_status !== '-1'" />
+      <el-button text disabled v-if="buttonData?.vote_status === '0'">
+        <AppIcon iconName="app-like-color"></AppIcon>
       </el-button>
-    </el-tooltip>
 
-    <el-divider direction="vertical" v-if="buttonData?.vote_status !== '-1'" />
-    <el-button text disabled v-if="buttonData?.vote_status === '0'">
-      <AppIcon iconName="app-like-color"></AppIcon>
-    </el-button>
-
-    <el-button text disabled v-if="buttonData?.vote_status === '1'">
-      <AppIcon iconName="app-oppose-color"></AppIcon>
-    </el-button>
-    <EditContentDialog ref="EditContentDialogRef" @refresh="refreshContent" />
-    <EditMarkDialog ref="EditMarkDialogRef" @refresh="refreshMark" />
-    <!-- 先渲染，不然不能播放   -->
-    <audio ref="audioPlayer" controls hidden="hidden"></audio>
+      <el-button text disabled v-if="buttonData?.vote_status === '1'">
+        <AppIcon iconName="app-oppose-color"></AppIcon>
+      </el-button>
+      <EditContentDialog ref="EditContentDialogRef" @refresh="refreshContent" />
+      <EditMarkDialog ref="EditMarkDialogRef" @refresh="refreshMark" />
+      <!-- 先渲染，不然不能播放   -->
+      <audio ref="audioPlayer" controls hidden="hidden"></audio>
+    </div>
   </div>
 </template>
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { copyClick } from '@/utils/clipboard'
 import EditContentDialog from '@/views/log/component/EditContentDialog.vue'
 import EditMarkDialog from '@/views/log/component/EditMarkDialog.vue'
@@ -129,12 +131,22 @@ function markdownToPlainText(md: string) {
   )
 }
 
+function removeFormRander(text: string) {
+  return text
+    .replace(/<form_rander>[\s\S]*?<\/form_rander>/g, '')
+    .trim()
+}
+
+
 const playAnswerText = (text: string) => {
   if (!text) {
     text = '抱歉，没有查找到相关内容，请重新描述您的问题或提供更多信息。'
   }
+  // 移除表单渲染器
+  text = removeFormRander(text)
   // text 处理成纯文本
   text = markdownToPlainText(text)
+  // console.log(text)
   audioPlayerStatus.value = true
   if (props.tts_type === 'BROWSER') {
     if (text !== utterance.value?.text) {

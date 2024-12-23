@@ -56,12 +56,14 @@ mime_types = {"html": "text/html", "htm": "text/html", "shtml": "text/html", "cs
 
 class FileSerializer(serializers.Serializer):
     file = UploadedFileField(required=True, error_messages=ErrMessage.image("文件"))
+    meta = serializers.JSONField(required=False)
 
     def upload(self, with_valid=True):
         if with_valid:
             self.is_valid(raise_exception=True)
-        file_id = uuid.uuid1()
-        file = File(id=file_id, file_name=self.data.get('file').name)
+        meta = self.data.get('meta')
+        file_id = meta.get('file_id', uuid.uuid1())
+        file = File(id=file_id, file_name=self.data.get('file').name, meta=meta)
         file.save(self.data.get('file').read())
         return f'/api/file/{file_id}'
 
@@ -75,5 +77,11 @@ class FileSerializer(serializers.Serializer):
             file = QuerySet(File).filter(id=file_id).first()
             if file is None:
                 raise NotFound404(404, "不存在的文件")
+            # 如果是音频文件，直接返回文件流
+            file_type = file.file_name.split(".")[-1]
+            if file_type in ['mp3', 'wav', 'ogg', 'aac']:
+                return HttpResponse(file.get_byte(), status=200, headers={'Content-Type': f'audio/{file_type}',
+                                                                          'Content-Disposition': 'attachment; filename="{}"'.format(
+                                                                              file.file_name)})
             return HttpResponse(file.get_byte(), status=200,
                                 headers={'Content-Type': mime_types.get(file.file_name.split(".")[-1], 'text/plain')})

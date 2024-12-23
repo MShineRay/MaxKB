@@ -38,9 +38,9 @@ export function fileType(name: string) {
   获得文件对应图片
 */
 const typeList: any = {
-  txt: ['txt', 'pdf', 'docx', 'csv', 'md', 'html'],
+  txt: ['txt', 'pdf', 'docx', 'md', 'html', 'zip', 'xlsx', 'xls', 'csv'],
   table: ['xlsx', 'xls', 'csv'],
-  QA: ['xlsx', 'csv', 'xls']
+  QA: ['xlsx', 'csv', 'xls', 'zip']
 }
 
 export function getImgUrl(name: string) {
@@ -51,6 +51,7 @@ export function getImgUrl(name: string) {
 }
 // 是否是白名单后缀
 export function isRightType(name: string, type: string) {
+  console.log(name, type)
   return typeList[type].includes(fileType(name).toLowerCase())
 }
 
@@ -87,4 +88,15 @@ export function getAttrsArray(array: Array<any>, attr: string) {
 // 求和
 export function getSum(array: Array<any>) {
   return array.reduce((total, item) => total + item, 0)
+}
+
+// 下载
+export function downloadByURL(url: string, name: string) {
+  const a = document.createElement('a')
+  a.setAttribute('href', url)
+  a.setAttribute('target', '_blank')
+  a.setAttribute('download', name)
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
 }

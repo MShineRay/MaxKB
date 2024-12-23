@@ -11,7 +11,7 @@ export default {
     embedThirdParty: '嵌入第三方',
     accessRestrictions: '访问限制',
     displaySetting: '显示设置',
-    apiAccessCredentials: 'API访问凭据',
+    apiAccessCredentials: 'API 访问凭据',
     apiKey: 'API Key',
     refreshToken: {
       msgConfirm1: '是否重新生成公开访问链接?',
@@ -47,7 +47,7 @@ export default {
       upload: '上传',
       default: '默认logo',
       custom: '自定义',
-      sizeTip: '建议尺寸 32*32，支持 JPG、PNG, GIF，大小不超过 10 MB',
+      sizeTip: '建议尺寸 32*32，支持 JPG、PNG、GIF，大小不超过 10 MB',
       cancel: '取消',
       save: '保存',
       fileSizeExceeded: '文件大小超过 10 MB',

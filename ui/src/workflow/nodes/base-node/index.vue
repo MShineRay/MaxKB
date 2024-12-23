@@ -45,6 +45,36 @@
           @submitDialog="submitDialog"
         />
       </el-form-item>
+      <el-form-item >
+        <template #label>
+          <div class="flex-between">
+            <div class="flex align-center">
+              <span class="mr-4">文件上传</span>
+              <el-tooltip
+                effect="dark"
+                content="开启后，问答页面会显示上传文件的按钮。"
+                placement="right"
+              >
+                <AppIcon iconName="app-warning" class="app-warning-icon"></AppIcon>
+              </el-tooltip>
+            </div>
+            <div>
+              <el-button
+                v-if="form_data.file_upload_enable"
+                type="primary"
+                link
+                @click="openFileUploadSettingDialog"
+                class="mr-4"
+              >
+                <el-icon class="mr-4">
+                  <Setting />
+                </el-icon>
+              </el-button>
+              <el-switch size="small" v-model="form_data.file_upload_enable" @change="switchFileUpload"/>
+            </div>
+          </div>
+        </template>
+      </el-form-item>
       <UserInputFieldTable ref="UserInputFieldTableFef" :node-model="nodeModel" />
       <ApiInputFieldTable ref="ApiInputFieldTableFef" :node-model="nodeModel" />
       <el-form-item>
@@ -52,15 +82,15 @@
           <div class="flex-between">
             <div class="flex align-center">
               <span class="mr-4">语音输入</span>
-              <el-tooltip
+              <!-- <el-tooltip
                 effect="dark"
                 content="开启后，需要设定语音转文本模型，语音输入完成后会转化为文字直接发送提问"
                 placement="right"
               >
                 <AppIcon iconName="app-warning" class="app-warning-icon"></AppIcon>
-              </el-tooltip>
+              </el-tooltip> -->
             </div>
-            <el-switch size="small" v-model="form_data.stt_model_enable" />
+            <el-switch size="small" v-model="form_data.stt_model_enable" @change="sttModelEnableChange"/>
           </div>
         </template>
 
@@ -129,18 +159,18 @@
             <span class="mr-4">语音播放</span>
             <div>
               <el-button
-                v-if="form_data.tts_type === 'TTS'"
+                v-if="form_data.tts_type === 'TTS' && form_data.tts_model_enable"
                 type="primary"
                 link
                 @click="openTTSParamSettingDialog"
                 :disabled="!form_data.tts_model_id"
+                class="mr-4"
               >
                 <el-icon class="mr-4">
                   <Setting />
                 </el-icon>
-                设置
               </el-button>
-              <el-switch size="small" v-model="form_data.tts_model_enable" />
+              <el-switch size="small" v-model="form_data.tts_model_enable" @change="ttsModelEnableChange"/>
             </div>
           </div>
         </template>
@@ -153,7 +183,9 @@
           v-model="form_data.tts_model_id"
           class="w-full"
           popper-class="select-model"
+          @change="ttsModelChange()"
           placeholder="请选择语音合成模型"
+          :teleported="false"
         >
           <el-option-group
             v-for="(value, label) in ttsModelOptions"
@@ -209,6 +241,7 @@
       </el-form-item>
     </el-form>
     <TTSModeParamSettingDialog ref="TTSModeParamSettingDialogRef" @refresh="refreshTTSForm" />
+    <FileUploadSettingDialog ref="FileUploadSettingDialogRef" :node-model="nodeModel" @refresh="refreshFileUploadForm"/>
   </NodeContainer>
 </template>
 <script setup lang="ts">
@@ -226,6 +259,7 @@ import { t } from '@/locales'
 import TTSModeParamSettingDialog from '@/views/application/component/TTSModeParamSettingDialog.vue'
 import ApiInputFieldTable from './component/ApiInputFieldTable.vue'
 import UserInputFieldTable from './component/UserInputFieldTable.vue'
+import FileUploadSettingDialog from '@/workflow/nodes/base-node/component/FileUploadSettingDialog.vue'
 
 const { model } = useStore()
 
@@ -241,6 +275,7 @@ const providerOptions = ref<Array<Provider>>([])
 const TTSModeParamSettingDialogRef = ref<InstanceType<typeof TTSModeParamSettingDialog>>()
 const UserInputFieldTableFef = ref()
 const ApiInputFieldTableFef = ref()
+const FileUploadSettingDialogRef = ref<InstanceType<typeof FileUploadSettingDialog>>()
 
 const form = {
   name: '',
@@ -312,6 +347,28 @@ function getTTSModel() {
   })
 }
 
+function ttsModelChange() {
+  if (form_data.value.tts_model_id) {
+    TTSModeParamSettingDialogRef.value?.reset_default(form_data.value.tts_model_id, id)
+  } else {
+    refreshTTSForm({})
+  }
+}
+
+function ttsModelEnableChange() {
+  if (!form_data.value.tts_model_enable) {
+    form_data.value.tts_model_id = ''
+    form_data.value.tts_type = 'BROWSER'
+  }
+}
+
+function sttModelEnableChange() {
+  if (!form_data.value.stt_model_enable) {
+    form_data.value.stt_model_id = ''
+  }
+}
+
+
 const openTTSParamSettingDialog = () => {
   const model_id = form_data.value.tts_model_id
   if (!model_id) {
@@ -323,6 +380,30 @@ const openTTSParamSettingDialog = () => {
 
 const refreshTTSForm = (data: any) => {
   form_data.value.tts_model_params_setting = data
+}
+
+
+const switchFileUpload = () => {
+  const default_upload_setting = {
+    maxFiles: 3,
+    fileLimit: 50,
+    document: true,
+    image: false,
+    audio: false,
+    video: false
+  }
+
+  if (form_data.value.file_upload_enable) {
+    form_data.value.file_upload_setting = form_data.value.file_upload_setting || default_upload_setting
+  }
+  props.nodeModel.graphModel.eventCenter.emit('refreshFileUploadConfig')
+}
+const openFileUploadSettingDialog = () => {
+  FileUploadSettingDialogRef.value?.open(form_data.value.file_upload_setting)
+}
+
+const refreshFileUploadForm = (data: any) => {
+  form_data.value.file_upload_setting = data
 }
 
 onMounted(() => {

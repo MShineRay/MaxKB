@@ -1,6 +1,6 @@
 <template>
   <div class="flex-center mb-16">
-    <img src="@/assets/logo_dingtalk.svg " alt="" width="24px" class="mr-4" />
+    <img src="@/assets/logo_dingtalk.svg" alt="" width="24px" class="mr-4" />
     <h2>钉钉扫码登录</h2>
   </div>
   <div class="ding-talk-qrName">
@@ -11,8 +11,9 @@
 <script lang="ts" setup>
 import { useRouter } from 'vue-router'
 import { useScriptTag } from '@vueuse/core'
-import { defineProps, onMounted, ref } from 'vue'
+import { ref, watch } from 'vue'
 import useStore from '@/stores'
+import { MsgError } from '@/utils/message'
 
 // 声明 DTFrameLogin 和 QRLogin 的类型
 declare global {
@@ -65,6 +66,7 @@ const props = defineProps<{
   config: {
     app_secret: string
     app_key: string
+    corp_id: string
   }
 }>()
 
@@ -79,14 +81,15 @@ const initActive = async () => {
     if (!isConfigReady.value) {
       return
     }
+    console.log(props.config)
 
     const data = {
       appKey: props.config.app_key,
-      appSecret: props.config.app_secret
+      appSecret: props.config.app_secret,
+      corp_id: props.config.corp_id
     }
 
     const redirectUri = encodeURIComponent(window.location.origin)
-
     window.DTFrameLogin(
       {
         id: 'ding-talk-qr',
@@ -95,7 +98,7 @@ const initActive = async () => {
       },
       {
         redirect_uri: redirectUri,
-        client_id: data.appKey || '',
+        client_id: data.appKey,
         scope: 'openid',
         response_type: 'code',
         state: 'fit2cloud-ding-qr',
@@ -108,7 +111,8 @@ const initActive = async () => {
         })
       },
       (errorMsg: string) => {
-        console.error(errorMsg)
+        MsgError(errorMsg)
+        console.log(errorMsg)
       }
     )
   } catch (error) {
@@ -116,13 +120,16 @@ const initActive = async () => {
   }
 }
 
-onMounted(() => {
-  // 模拟 config 加载完成
-  setTimeout(() => {
-    isConfigReady.value = true
-    initActive()
-  }, 1000)
-})
+watch(
+  () => props.config,
+  (newConfig) => {
+    if (newConfig.app_secret && newConfig.app_key && newConfig.corp_id) {
+      isConfigReady.value = true
+      initActive()
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <style lang="scss">

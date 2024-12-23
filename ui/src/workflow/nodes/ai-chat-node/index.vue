@@ -22,7 +22,7 @@
           }"
         >
           <template #label>
-            <div class="flex-between">
+            <div class="flex-between w-full">
               <div>
                 <span>AI 模型<span class="danger">*</span></span>
               </div>
@@ -148,12 +148,23 @@
           />
         </el-form-item>
         <el-form-item label="历史聊天记录">
+          <template #label>
+            <div class="flex-between">
+              <div>历史聊天记录</div>
+              <el-select v-model="chat_data.dialogue_type" type="small" style="width: 100px">
+                <el-option label="节点" value="NODE" />
+                <el-option label="工作流" value="WORKFLOW" />
+              </el-select>
+            </div>
+          </template>
           <el-input-number
             v-model="chat_data.dialogue_number"
             :min="0"
             :value-on-clear="0"
             controls-position="right"
             class="w-full"
+            :step="1"
+            :step-strictly="true"
           />
         </el-form-item>
         <el-form-item label="返回内容" @click.prevent>
@@ -244,7 +255,8 @@ const form = {
   dialogue_number: 1,
   is_result: false,
   temperature: null,
-  max_tokens: null
+  max_tokens: null,
+  dialogue_type: 'WORKFLOW'
 }
 
 const chat_data = computed({
@@ -319,8 +331,10 @@ onMounted(() => {
       set(props.nodeModel.properties.node_data, 'is_result', true)
     }
   }
-
   set(props.nodeModel, 'validate', validate)
+  if (!chat_data.value.dialogue_type) {
+    chat_data.value.dialogue_type = 'WORKFLOW'
+  }
 })
 </script>
 <style lang="scss" scoped></style>

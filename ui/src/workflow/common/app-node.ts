@@ -137,6 +137,26 @@ class AppNode extends HtmlResize.view {
 }
 
 class AppNodeModel extends HtmlResize.model {
+  refreshDeges() {
+    // 更新节点连接边的path
+    this.incoming.edges.forEach((edge: any) => {
+      // 调用自定义的更新方案
+      edge.updatePathByAnchor()
+    })
+    this.outgoing.edges.forEach((edge: any) => {
+      edge.updatePathByAnchor()
+    })
+  }
+  set_position(position: { x?: number; y?: number }) {
+    const { x, y } = position
+    if (x) {
+      this.x = x
+    }
+    if (y) {
+      this.y = y
+    }
+    this.refreshDeges()
+  }
   getResizeOutlineStyle() {
     const style = super.getResizeOutlineStyle()
     style.stroke = 'none'
@@ -193,20 +213,20 @@ class AppNodeModel extends HtmlResize.model {
   get_width() {
     return this.properties?.width || 340
   }
-  
+
   setAttributes() {
     this.width = this.get_width()
-    const isLoop=(node_id:string,target_node_id:string)=>{
-      const up_node_list=this.graphModel.getNodeIncomingNode(node_id)
+    const isLoop = (node_id: string, target_node_id: string) => {
+      const up_node_list = this.graphModel.getNodeIncomingNode(node_id)
       for (const index in up_node_list) {
-        const item=up_node_list[index]
-        if(item.id===target_node_id){
+        const item = up_node_list[index]
+        if (item.id === target_node_id) {
           return true
-        }else{
-         const result= isLoop(item.id,target_node_id)
-         if(result){
-          return true
-         }
+        } else {
+          const result = isLoop(item.id, target_node_id)
+          if (result) {
+            return true
+          }
         }
       }
       return false
@@ -220,7 +240,7 @@ class AppNodeModel extends HtmlResize.model {
     this.sourceRules.push({
       message: '不可循环连线',
       validate: (sourceNode: any, targetNode: any, sourceAnchor: any, targetAnchor: any) => {
-       return !isLoop(sourceNode.id,targetNode.id)
+        return !isLoop(sourceNode.id, targetNode.id)
       }
     })
 
@@ -234,13 +254,14 @@ class AppNodeModel extends HtmlResize.model {
   }
   getDefaultAnchor() {
     const { id, x, y, width } = this
+    const showNode = this.properties.showNode === undefined ? true : this.properties.showNode
     const anchors: any = []
 
     if (this.type !== WorkflowType.Base) {
       if (this.type !== WorkflowType.Start) {
         anchors.push({
           x: x - width / 2 + 10,
-          y: y,
+          y: showNode ? y : y - 15,
           id: `${id}_left`,
           edgeAddable: false,
           type: 'left'
@@ -248,7 +269,7 @@ class AppNodeModel extends HtmlResize.model {
       }
       anchors.push({
         x: x + width / 2 - 10,
-        y: y,
+        y: showNode ? y : y - 15,
         id: `${id}_right`,
         type: 'right'
       })

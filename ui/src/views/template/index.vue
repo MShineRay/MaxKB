@@ -2,7 +2,7 @@
   <LayoutContainer header="模型设置">
     <div class="template-manage flex main-calc-height">
       <div class="template-manage__left p-8 border-r">
-        <h4 style="padding-bottom: 8px">供应商</h4>
+        <h4 class="p-16">供应商</h4>
         <div class="model-list-height-left">
           <div
             class="all-mode flex cursor"
@@ -33,7 +33,7 @@
                   ref="commonList1"
                 >
                   <template #default="{ row }">
-                    <div class="flex">
+                    <div class="flex align-center">
                       <span
                         :innerHTML="row.icon"
                         alt=""
@@ -59,7 +59,7 @@
                   ref="commonList2"
                 >
                   <template #default="{ row }">
-                    <div class="flex">
+                    <div class="flex align-center">
                       <span
                         :innerHTML="row.icon"
                         alt=""
@@ -132,6 +132,8 @@
                 <el-option label="重排模型" value="RERANKER" />
                 <el-option label="语音识别" value="STT" />
                 <el-option label="语音合成" value="TTS" />
+                <el-option label="图片理解" value="IMAGE" />
+                <el-option label="图片生成" value="TTI" />
               </el-select>
             </div>
           </div>
@@ -300,11 +302,11 @@ onMounted(() => {
   }
 
   .model-list-height {
-    height: calc(var(--create-dataset-height) - 70px);
+    height: calc(var(--create-dataset-height) - 80px);
   }
 
   .model-list-height-left {
-    height: calc(var(--create-dataset-height));
+    height: calc(var(--create-dataset-height) - 40px);
   }
   .all-mode {
     padding: 10px 16px;
@@ -322,8 +324,10 @@ onMounted(() => {
       border-bottom: none !important;
       padding-left: 16px;
       font-size: 14px;
+      height: 40px;
       &:hover {
         background: var(--app-text-color-light-1);
+        border-radius: 4px;
       }
     }
     :deep(.el-collapse-item) {
@@ -336,6 +340,9 @@ onMounted(() => {
     }
     :deep(.el-collapse-item__wrap) {
       border-bottom: none !important;
+    }
+    :deep(.el-collapse-item__content) {
+      padding-bottom: 0 !important;
     }
   }
 }

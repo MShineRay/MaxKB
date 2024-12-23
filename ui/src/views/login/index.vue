@@ -66,7 +66,14 @@
             :key="item"
             class="login-button-circle color-secondary"
             @click="changeMode(item)"
-            >{{ item }}
+          >
+            <span
+              :style="{
+                'font-size': item === 'OAUTH2' ? '8px' : '10px',
+                color: user.themeInfo?.theme
+              }"
+              >{{ item }}</span
+            >
           </el-button>
           <el-button
             v-if="item === 'QR_CODE' && loginMode !== item"
@@ -157,10 +164,23 @@ function redirectAuth(authType: string) {
         const redirectUrl = eval(`\`${config.redirectUrl}\``)
         let url
         if (authType === 'CAS') {
-          url = `${config.ldpUri}?service=${encodeURIComponent(redirectUrl)}`
+          url = config.ldpUri
+          if (url.indexOf('?') !== -1) {
+            url = `${config.ldpUri}&service=${encodeURIComponent(redirectUrl)}`
+          } else {
+            url = `${config.ldpUri}?service=${encodeURIComponent(redirectUrl)}`
+          }
         }
         if (authType === 'OIDC') {
           url = `${config.authEndpoint}?client_id=${config.clientId}&redirect_uri=${redirectUrl}&response_type=code&scope=openid+profile+email`
+        }
+        if (authType === 'OAUTH2') {
+          url =
+            `${config.authEndpoint}?client_id=${config.clientId}&response_type=code` +
+            `&redirect_uri=${redirectUrl}&state=${res.data.id}`
+          if (config.scope) {
+            url += `&scope=${config.scope}`
+          }
         }
         if (url) {
           window.location.href = url
@@ -205,6 +225,12 @@ onMounted(() => {
       user
         .getAuthType()
         .then((res) => {
+          //如果结果包含LDAP，把LDAP放在第一个
+          const ldapIndex = res.indexOf('LDAP')
+          if (ldapIndex !== -1) {
+            const [ldap] = res.splice(ldapIndex, 1)
+            res.unshift(ldap)
+          }
           modeList.value = [...modeList.value, ...res]
         })
         .finally(() => (loading.value = false))
@@ -225,11 +251,6 @@ onMounted(() => {
         .finally(() => (loading.value = false))
     }
   })
-})
-onBeforeMount(() => {
-  if (user.isEnterprise()) {
-    user.theme(loading)
-  }
 })
 </script>
 <style lang="scss" scope>

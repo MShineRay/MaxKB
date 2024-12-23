@@ -8,13 +8,28 @@
     v-bind="$attrs"
   >
     <el-form-item label="参数" :required="true" prop="field" :rules="rules.field">
-      <el-input v-model="form_data.field" placeholder="请输入参数" />
+      <el-input
+        v-model="form_data.field"
+        :maxlength="64"
+        placeholder="请输入参数"
+        show-word-limit
+      />
     </el-form-item>
     <el-form-item label="显示名称" :required="true" prop="label" :rules="rules.label">
-      <el-input v-model="form_data.label" placeholder="请输入显示名称" />
+      <el-input
+        v-model="form_data.label"
+        :maxlength="64"
+        show-word-limit
+        placeholder="请输入显示名称"
+      />
     </el-form-item>
     <el-form-item label="参数提示说明">
-      <el-input v-model="form_data.tooltip" placeholder="请输入参数提示说明" />
+      <el-input
+        v-model="form_data.tooltip"
+        :maxlength="128"
+        show-word-limit
+        placeholder="请输入参数提示说明"
+      />
     </el-form-item>
     <el-form-item label="是否必填" :required="true" prop="required" :rules="rules.required">
       <el-switch v-model="form_data.required" :active-value="true" :inactive-value="false" />
@@ -41,19 +56,15 @@
 import { onMounted, ref, nextTick } from 'vue'
 import type { FormInstance } from 'element-plus'
 import _ from 'lodash'
+import { input_type_list as input_type_list_data } from '@/components/dynamics-form/constructor/data'
 const props = withDefaults(
   defineProps<{
     modelValue?: any
     input_type_list?: Array<{ label: string; value: string }>
   }>(),
   {
-    input_type_list: () => [
-      { label: '文本框', value: 'TextInputConstructor' },
-      { label: '滑块', value: 'SliderConstructor' },
-      { label: '开关', value: 'SwitchInputConstructor' },
-      { label: '单选框', value: 'SingleSelectConstructor' },
-      { label: '日期', value: 'DatePickerConstructor' }
-    ]
+    input_type_list: () =>
+      input_type_list_data.map((item) => ({ label: item.label, value: item.value + 'Constructor' }))
   }
 )
 const emit = defineEmits(['update:modelValue'])
@@ -69,8 +80,8 @@ const form_data = ref<any>({
   input_type: ''
 })
 const rules = {
-  label: [{ required: true, message: '参数 为必填属性' }],
-  field: [{ required: true, message: '显示名称 为必填属性' }],
+  label: [{ required: true, message: '显示名称 为必填属性' }],
+  field: [{ required: true, message: '参数 为必填属性' }],
   required: [{ required: true, message: '是否必填 为必填属性' }],
   input_type: [{ required: true, message: '组建类型 为必填属性' }]
 }
@@ -89,6 +100,7 @@ const getData = () => {
     required: form_data.value.required,
     field: form_data.value.field,
     default_value: form_data.value.default_value,
+    show_default_value: form_data.value.show_default_value,
     ...componentFormRef.value.getData()
   }
 }
@@ -108,7 +120,10 @@ onMounted(() => {
 const rander = (data: any) => {
   form_data.value.required = data.required ? data.required : false
   form_data.value.field = data.field
-  form_data.value.input_type = data.input_type + 'Constructor'
+  if (data.input_type) {
+    form_data.value.input_type = data.input_type + 'Constructor'
+  }
+
   if (data.label && data.label.input_type === 'TooltipLabel') {
     form_data.value.tooltip = data.label.attrs.tooltip
     form_data.value.label = data.label.label

@@ -7,6 +7,7 @@
     @desc:
 """
 import os
+import shutil
 
 from smartdoc.const import CONFIG, PROJECT_DIR
 
@@ -32,9 +33,16 @@ CELERY_WORKER_REDIRECT_STDOUTS = True
 CELERY_WORKER_REDIRECT_STDOUTS_LEVEL = "INFO"
 CELERY_TASK_SOFT_TIME_LIMIT = 3600
 CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
+CELERY_ACKS_LATE = True
+celery_once_path = os.path.join(celery_data_dir, "celery_once")
+try:
+    if os.path.exists(celery_once_path) and os.path.isdir(celery_once_path):
+        shutil.rmtree(celery_once_path)
+except Exception as e:
+    pass
 CELERY_ONCE = {
     'backend': 'celery_once.backends.File',
-    'settings': {'location': os.path.join(celery_data_dir, "celery_once")}
+    'settings': {'location': celery_once_path}
 }
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_LOG_DIR = os.path.join(PROJECT_DIR, 'logs', 'celery')

@@ -5,11 +5,13 @@ from . import views
 app_name = "application"
 urlpatterns = [
     path('application', views.Application.as_view(), name="application"),
+    path('application/import', views.Application.Import.as_view()),
     path('application/profile', views.Application.Profile.as_view(), name='application/profile'),
     path('application/embed', views.Application.Embed.as_view()),
     path('application/authentication', views.Application.Authentication.as_view()),
     path('application/<str:application_id>/publish', views.Application.Publish.as_view()),
     path('application/<str:application_id>/edit_icon', views.Application.EditIcon.as_view()),
+    path('application/<str:application_id>/export', views.Application.Export.as_view()),
     path('application/<str:application_id>/statistics/customer_count',
          views.ApplicationStatistics.CustomerCount.as_view()),
     path('application/<str:application_id>/statistics/customer_count_trend',
@@ -22,6 +24,7 @@ urlpatterns = [
     path('application/<str:application_id>/function_lib', views.Application.FunctionLib.as_view()),
     path('application/<str:application_id>/function_lib/<str:function_lib_id>',
          views.Application.FunctionLib.Operate.as_view()),
+    path('application/<str:application_id>/application', views.Application.Application.as_view()),
     path('application/<str:application_id>/model_params_form/<str:model_id>',
          views.Application.ModelParamsForm.as_view()),
     path('application/<str:application_id>/hit_test', views.Application.HitTest.as_view()),
@@ -48,6 +51,7 @@ urlpatterns = [
     path('application/<str:application_id>/chat/<int:current_page>/<int:page_size>', views.ChatView.Page.as_view()),
     path('application/<str:application_id>/chat/<chat_id>', views.ChatView.Operate.as_view()),
     path('application/<str:application_id>/chat/<chat_id>/chat_record/', views.ChatView.ChatRecord.as_view()),
+    path('application/<str:application_id>/chat/<chat_id>/upload_file', views.ChatView.UploadFile.as_view()),
     path('application/<str:application_id>/chat/<chat_id>/chat_record/<int:current_page>/<int:page_size>',
          views.ChatView.ChatRecord.Page.as_view()),
     path('application/<str:application_id>/chat/<chat_id>/chat_record/<chat_record_id>',
@@ -57,6 +61,10 @@ urlpatterns = [
          name=''),
     path(
         'application/<str:application_id>/chat/<chat_id>/chat_record/<str:chat_record_id>/dataset/<str:dataset_id>/document_id/<str:document_id>/improve',
+        views.ChatView.ChatRecord.Improve.as_view(),
+        name=''),
+    path(
+        'application/<str:application_id>/dataset/<str:dataset_id>/improve',
         views.ChatView.ChatRecord.Improve.as_view(),
         name=''),
     path('application/<str:application_id>/chat/<chat_id>/chat_record/<str:chat_record_id>/improve',

@@ -2,19 +2,26 @@
   <el-card shadow="hover" class="card-box" @mouseenter="cardEnter()" @mouseleave="cardLeave()">
     <div class="card-header">
       <slot name="header">
-        <div class="title flex align-center">
+        <div class="title flex" :class="slots.subTitle ? '' : 'align-center'">
           <slot name="icon">
             <AppAvatar v-if="showIcon" class="mr-12 avatar-blue" shape="square" :size="32">
               <img src="@/assets/icon_document.svg" style="width: 58%" alt="" />
             </AppAvatar>
           </slot>
-          <auto-tooltip :content="title" style="width: 65%">
-            {{ title }}
-          </auto-tooltip>
+          <div style="width: 90%;margin-top: -5px;">
+            <auto-tooltip :content="title" style="width: 65%; height: 22px">
+              {{ title }}
+            </auto-tooltip>
+            <slot name="subTitle"> </slot>
+          </div>
         </div>
       </slot>
     </div>
-    <div class="description break-all mt-12" v-if="$slots.description || description">
+    <div
+      class="description break-all"
+      :class="slots.subTitle ? 'mt-24' : 'mt-12'"
+      v-if="$slots.description || description"
+    >
       <slot name="description">
         <div class="content">
           {{ description }}
@@ -62,13 +69,12 @@ function cardEnter() {
 }
 
 function cardLeave() {
-  show.value = subHovered.value;
+  show.value = subHovered.value
 }
 
 function subHoveredEnter() {
   subHovered.value = true
 }
-
 </script>
 <style lang="scss" scoped>
 .card-box {
@@ -79,6 +85,7 @@ function subHoveredEnter() {
   border-radius: 8px;
   .title {
     height: 20px;
+
   }
   .description {
     color: var(--app-text-color-secondary);

@@ -11,6 +11,7 @@ import os
 import re
 import tempfile
 import time
+import traceback
 from typing import List
 
 import fitz
@@ -30,6 +31,16 @@ default_pattern_list = [re.compile('(?<=^)# .*|(?<=\\n)# .*'),
 max_kb = logging.getLogger("max_kb")
 
 
+def check_links_in_pdf(doc):
+    for page_number in range(len(doc)):
+        page = doc[page_number]
+        links = page.get_links()
+        if links:
+            for link in links:
+                if link['kind'] == 1:
+                    return True
+    return False
+
 class PdfSplitHandle(BaseSplitHandle):
     def handle(self, file, pattern_list: List, with_filter: bool, limit: int, get_buffer, save_image):
         with tempfile.NamedTemporaryFile(delete=False) as temp_file:
@@ -42,7 +53,7 @@ class PdfSplitHandle(BaseSplitHandle):
         pdf_document = fitz.open(temp_file_path)
         try:
             # 处理有目录的pdf
-            result = self.handle_toc(pdf_document)
+            result = self.handle_toc(pdf_document, limit)
             if result is not None:
                 return {'name': file.name, 'content': result}
 
@@ -103,6 +114,9 @@ class PdfSplitHandle(BaseSplitHandle):
 
             content += page_content
 
+            # Null characters are not allowed.
+            content = content.replace('\0', '')
+
             elapsed_time = time.time() - start_time
             max_kb.debug(
                 f"File: {file.name}, Page: {page_num + 1}, Time : {elapsed_time: .3f}s,   content-length: {len(page_content)}")
@@ -110,7 +124,7 @@ class PdfSplitHandle(BaseSplitHandle):
         return content
 
     @staticmethod
-    def handle_toc(doc):
+    def handle_toc(doc, limit):
         # 找到目录
         toc = doc.get_toc()
         if toc is None or len(toc) == 0:
@@ -156,18 +170,24 @@ class PdfSplitHandle(BaseSplitHandle):
 
                 chapter_text += text  # 提取文本
 
+            # Null characters are not allowed.
+            chapter_text = chapter_text.replace('\0', '')
+
+            # 限制章节内容长度
+            if 0 < limit < len(chapter_text):
+                split_text = PdfSplitHandle.split_text(chapter_text, limit)
+                for text in split_text:
+                    chapters.append({"title": chapter_title, "content": text})
+            else:
+                chapters.append({"title": chapter_title, "content": chapter_text if chapter_text else chapter_title})
             # 保存章节内容和章节标题
-            chapters.append({"title": chapter_title, "content": chapter_text if chapter_text else chapter_title})
         return chapters
 
     @staticmethod
-    def handle_chapter_title(title):
-        title = re.sub(r'[一二三四五六七八九十\s*]、\s*', '', title)
-        title = re.sub(r'第[一二三四五六七八九十]章\s*', '', title)
-        return title
-
-    @staticmethod
     def handle_links(doc, pattern_list, with_filter, limit):
+        # 检查文档是否包含内部链接
+        if not check_links_in_pdf(doc):
+            return
         # 创建存储章节内容的数组
         chapters = []
         toc_start_page = -1
@@ -228,11 +248,17 @@ class PdfSplitHandle(BaseSplitHandle):
                                 text = text[:idx]
                         chapter_text += text
 
-                    # 保存章节信息
-                    chapters.append({
-                        "title": link_title,
-                        "content": chapter_text
-                    })
+                    # Null characters are not allowed.
+                    chapter_text = chapter_text.replace('\0', '')
+
+                    # 限制章节内容长度
+                    if 0 < limit < len(chapter_text):
+                        split_text = PdfSplitHandle.split_text(chapter_text, limit)
+                        for text in split_text:
+                            chapters.append({"title": link_title, "content": text})
+                    else:
+                        # 保存章节信息
+                        chapters.append({"title": link_title, "content": chapter_text})
 
         # 目录中没有前言部分，手动处理
         if handle_pre_toc:
@@ -261,8 +287,51 @@ class PdfSplitHandle(BaseSplitHandle):
             chapters = pre_toc + chapters
         return chapters
 
+    @staticmethod
+    def split_text(text, length):
+        segments = []
+        current_segment = ""
+
+        for char in text:
+            current_segment += char
+            if len(current_segment) >= length:
+                # 查找最近的句号
+                last_period_index = current_segment.rfind('.')
+                if last_period_index != -1:
+                    segments.append(current_segment[:last_period_index + 1])
+                    current_segment = current_segment[last_period_index + 1:]  # 更新当前段落
+                else:
+                    segments.append(current_segment)
+                    current_segment = ""
+
+        # 处理剩余的部分
+        if current_segment:
+            segments.append(current_segment)
+
+        return segments
+
+    @staticmethod
+    def handle_chapter_title(title):
+        title = re.sub(r'[一二三四五六七八九十\s*]、\s*', '', title)
+        title = re.sub(r'第[一二三四五六七八九十]章\s*', '', title)
+        return title
+
     def support(self, file, get_buffer):
         file_name: str = file.name.lower()
         if file_name.endswith(".pdf") or file_name.endswith(".PDF"):
             return True
         return False
+
+    def get_content(self, file, save_image):
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            # 将上传的文件保存到临时文件中
+            temp_file.write(file.read())
+            # 获取临时文件的路径
+            temp_file_path = temp_file.name
+
+        pdf_document = fitz.open(temp_file_path)
+        try:
+            return self.handle_pdf_content(file, pdf_document)
+        except BaseException as e:
+            traceback.print_exception(e)
+            return f'{e}'

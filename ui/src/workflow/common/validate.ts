@@ -4,7 +4,12 @@ const end_nodes: Array<string> = [
   WorkflowType.AiChat,
   WorkflowType.Reply,
   WorkflowType.FunctionLib,
-  WorkflowType.FunctionLibCustom
+  WorkflowType.FunctionLibCustom,
+  WorkflowType.ImageUnderstandNode,
+  WorkflowType.Application,
+  WorkflowType.SpeechToTextNode,
+  WorkflowType.TextToSpeechNode,
+    WorkflowType.ImageGenerateNode,
 ]
 export class WorkFlowInstance {
   nodes

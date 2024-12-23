@@ -6,19 +6,22 @@
     @date：2023/9/22 13:43
     @desc:
 """
+import io
 import logging
 import os
 import re
 import traceback
 import uuid
 from functools import reduce
+from tempfile import TemporaryDirectory
 from typing import List, Dict
 
 import openpyxl
 from celery_once import AlreadyQueued
 from django.core import validators
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import QuerySet, Count
+from django.db.models.functions import Substr, Reverse
 from django.http import HttpResponse
 from drf_yasg import openapi
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
@@ -26,27 +29,34 @@ from rest_framework import serializers
 from xlwt import Utils
 
 from common.db.search import native_search, native_page_search
+from common.event import ListenerManagement
 from common.event.common import work_thread_pool
 from common.exception.app_exception import AppApiException
+from common.handle.impl.csv_split_handle import CsvSplitHandle
 from common.handle.impl.doc_split_handle import DocSplitHandle
 from common.handle.impl.html_split_handle import HTMLSplitHandle
 from common.handle.impl.pdf_split_handle import PdfSplitHandle
 from common.handle.impl.qa.csv_parse_qa_handle import CsvParseQAHandle
 from common.handle.impl.qa.xls_parse_qa_handle import XlsParseQAHandle
 from common.handle.impl.qa.xlsx_parse_qa_handle import XlsxParseQAHandle
-from common.handle.impl.table.csv_parse_table_handle import CsvSplitHandle
-from common.handle.impl.table.xls_parse_table_handle import XlsSplitHandle
-from common.handle.impl.table.xlsx_parse_table_handle import XlsxSplitHandle
+from common.handle.impl.qa.zip_parse_qa_handle import ZipParseQAHandle
+from common.handle.impl.table.csv_parse_table_handle import CsvSplitHandle as CsvSplitTableHandle
+from common.handle.impl.table.xls_parse_table_handle import XlsSplitHandle as XlsSplitTableHandle
+from common.handle.impl.table.xlsx_parse_table_handle import XlsxSplitHandle as XlsxSplitTableHandle
 from common.handle.impl.text_split_handle import TextSplitHandle
+from common.handle.impl.xls_split_handle import XlsSplitHandle
+from common.handle.impl.xlsx_split_handle import XlsxSplitHandle
+from common.handle.impl.zip_split_handle import ZipSplitHandle
 from common.mixins.api_mixin import ApiMixin
-from common.util.common import post, flat_map
+from common.util.common import post, flat_map, bulk_create_in_batches, parse_image
 from common.util.field_message import ErrMessage
 from common.util.file_util import get_file_content
 from common.util.fork import Fork
 from common.util.split_model import get_split_model
-from dataset.models.data_set import DataSet, Document, Paragraph, Problem, Type, Status, ProblemParagraphMapping, Image
+from dataset.models.data_set import DataSet, Document, Paragraph, Problem, Type, ProblemParagraphMapping, Image, \
+    TaskType, State
 from dataset.serializers.common_serializers import BatchSerializer, MetaSerializer, ProblemParagraphManage, \
-    get_embedding_model_id_by_dataset_id
+    get_embedding_model_id_by_dataset_id, write_image, zip_dir
 from dataset.serializers.paragraph_serializers import ParagraphSerializers, ParagraphInstanceSerializer
 from dataset.task import sync_web_document, generate_related_by_document_id
 from embedding.task.embedding import embedding_by_document, delete_embedding_by_document_list, \
@@ -54,8 +64,8 @@ from embedding.task.embedding import embedding_by_document, delete_embedding_by_
     embedding_by_document_list
 from smartdoc.conf import PROJECT_DIR
 
-parse_qa_handle_list = [XlsParseQAHandle(), CsvParseQAHandle(), XlsxParseQAHandle()]
-parse_table_handle_list = [CsvSplitHandle(), XlsSplitHandle(), XlsxSplitHandle()]
+parse_qa_handle_list = [XlsParseQAHandle(), CsvParseQAHandle(), XlsxParseQAHandle(), ZipParseQAHandle()]
+parse_table_handle_list = [CsvSplitTableHandle(), XlsSplitTableHandle(), XlsxSplitTableHandle()]
 
 
 class FileBufferHandle:
@@ -65,6 +75,19 @@ class FileBufferHandle:
         if self.buffer is None:
             self.buffer = file.read()
         return self.buffer
+
+
+class CancelInstanceSerializer(serializers.Serializer):
+    type = serializers.IntegerField(required=True, error_messages=ErrMessage.boolean(
+        "任务类型"))
+
+    def is_valid(self, *, raise_exception=False):
+        super().is_valid(raise_exception=True)
+        _type = self.data.get('type')
+        try:
+            TaskType(_type)
+        except Exception as e:
+            raise AppApiException(500, '任务类型不支持')
 
 
 class DocumentEditInstanceSerializer(ApiMixin, serializers.Serializer):
@@ -127,6 +150,19 @@ class DocumentWebInstanceSerializer(ApiMixin, serializers.Serializer):
                                   required=True,
                                   description='知识库id'),
                 ]
+
+    @staticmethod
+    def get_request_body_api():
+        return openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['source_url_list'],
+            properties={
+                'source_url_list': openapi.Schema(type=openapi.TYPE_ARRAY, title="文档地址列表",
+                                                  description="文档地址列表",
+                                                  items=openapi.Schema(type=openapi.TYPE_STRING)),
+                'selector': openapi.Schema(type=openapi.TYPE_STRING, title="选择器", description="选择器")
+            }
+        )
 
 
 class DocumentInstanceSerializer(ApiMixin, serializers.Serializer):
@@ -278,7 +314,14 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
             # 修改向量信息
             if model_id:
                 delete_embedding_by_paragraph_ids(pid_list)
-                QuerySet(Document).filter(id__in=document_id_list).update(status=Status.queue_up)
+                ListenerManagement.update_status(QuerySet(Document).filter(id__in=document_id_list),
+                                                 TaskType.EMBEDDING,
+                                                 State.PENDING)
+                ListenerManagement.update_status(QuerySet(Paragraph).filter(document_id__in=document_id_list),
+                                                 TaskType.EMBEDDING,
+                                                 State.PENDING)
+                ListenerManagement.get_aggregation_document_status_by_query_set(
+                    QuerySet(Document).filter(id__in=document_id_list))()
                 embedding_by_document_list.delay(document_id_list, model_id)
             else:
                 update_embedding_dataset_id(pid_list, target_dataset_id)
@@ -340,6 +383,7 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
                                          "文档名称"))
         hit_handling_method = serializers.CharField(required=False, error_messages=ErrMessage.char("命中处理方式"))
         is_active = serializers.BooleanField(required=False, error_messages=ErrMessage.boolean("文档是否可用"))
+        task_type = serializers.IntegerField(required=False, error_messages=ErrMessage.integer("任务类型"))
         status = serializers.CharField(required=False, error_messages=ErrMessage.char("文档状态"))
 
         def get_query_set(self):
@@ -351,9 +395,23 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
                 query_set = query_set.filter(**{'hit_handling_method': self.data.get('hit_handling_method')})
             if 'is_active' in self.data and self.data.get('is_active') is not None:
                 query_set = query_set.filter(**{'is_active': self.data.get('is_active')})
-            if 'status' in self.data and self.data.get('status') is not None:
-                query_set = query_set.filter(**{'status': self.data.get('status')})
-            query_set = query_set.order_by('-create_time')
+            if 'status' in self.data and self.data.get(
+                    'status') is not None:
+                task_type = self.data.get('task_type')
+                status = self.data.get(
+                    'status')
+                if task_type is not None:
+                    query_set = query_set.annotate(
+                        reversed_status=Reverse('status'),
+                        task_type_status=Substr('reversed_status', TaskType(task_type).value,
+                                                1),
+                    ).filter(task_type_status=State(status).value).values('id')
+                else:
+                    if status != State.SUCCESS.value:
+                        query_set = query_set.filter(status__icontains=status)
+                    else:
+                        query_set = query_set.filter(status__iregex='^[2n]*$')
+            query_set = query_set.order_by('-create_time', 'id')
             return query_set
 
         def list(self, with_valid=False):
@@ -404,11 +462,14 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
                 self.is_valid(raise_exception=True)
             document_id = self.data.get('document_id')
             document = QuerySet(Document).filter(id=document_id).first()
+            state = State.SUCCESS
             if document.type != Type.web:
                 return True
             try:
-                document.status = Status.queue_up
-                document.save()
+                ListenerManagement.update_status(QuerySet(Document).filter(id=document_id),
+                                                 TaskType.SYNC,
+                                                 State.PENDING)
+                ListenerManagement.get_aggregation_document_status(document_id)()
                 source_url = document.meta.get('source_url')
                 selector_list = document.meta.get('selector').split(
                     " ") if 'selector' in document.meta and document.meta.get('selector') is not None else []
@@ -418,13 +479,14 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
                     QuerySet(model=Paragraph).filter(document_id=document_id).delete()
                     # 删除问题
                     QuerySet(model=ProblemParagraphMapping).filter(document_id=document_id).delete()
+                    delete_problems_and_mappings([document_id])
                     # 删除向量库
                     delete_embedding_by_document(document_id)
                     paragraphs = get_split_model('web.md').parse(result.content)
-                    document.char_length = reduce(lambda x, y: x + y,
-                                                  [len(p.get('content')) for p in paragraphs],
-                                                  0)
-                    document.save()
+                    char_length = reduce(lambda x, y: x + y,
+                                         [len(p.get('content')) for p in paragraphs],
+                                         0)
+                    QuerySet(Document).filter(id=document_id).update(char_length=char_length)
                     document_paragraph_model = DocumentSerializers.Create.get_paragraph_model(document, paragraphs)
 
                     paragraph_model_list = document_paragraph_model.get('paragraph_model_list')
@@ -441,14 +503,27 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
                     # 向量化
                     if with_embedding:
                         embedding_model_id = get_embedding_model_id_by_dataset_id(document.dataset_id)
+                        ListenerManagement.update_status(QuerySet(Document).filter(id=document_id),
+                                                         TaskType.EMBEDDING,
+                                                         State.PENDING)
+                        ListenerManagement.update_status(QuerySet(Paragraph).filter(document_id=document_id),
+                                                         TaskType.EMBEDDING,
+                                                         State.PENDING)
+                        ListenerManagement.get_aggregation_document_status(document_id)()
                         embedding_by_document.delay(document_id, embedding_model_id)
+
                 else:
-                    document.status = Status.error
-                    document.save()
+                    state = State.FAILURE
             except Exception as e:
                 logging.getLogger("max_kb_error").error(f'{str(e)}:{traceback.format_exc()}')
-                document.status = Status.error
-                document.save()
+                state = State.FAILURE
+            ListenerManagement.update_status(QuerySet(Document).filter(id=document_id),
+                                             TaskType.SYNC,
+                                             state)
+            ListenerManagement.update_status(QuerySet(Paragraph).filter(document_id=document_id),
+                                             TaskType.SYNC,
+                                             state)
+            ListenerManagement.get_aggregation_document_status(document_id)()
             return True
 
     class Operate(ApiMixin, serializers.Serializer):
@@ -495,11 +570,41 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
             workbook.save(response)
             return response
 
+        def export_zip(self, with_valid=True):
+            if with_valid:
+                self.is_valid(raise_exception=True)
+            document = QuerySet(Document).filter(id=self.data.get("document_id")).first()
+            paragraph_list = native_search(QuerySet(Paragraph).filter(document_id=self.data.get("document_id")),
+                                           get_file_content(
+                                               os.path.join(PROJECT_DIR, "apps", "dataset", 'sql',
+                                                            'list_paragraph_document_name.sql')))
+            problem_mapping_list = native_search(
+                QuerySet(ProblemParagraphMapping).filter(document_id=self.data.get("document_id")), get_file_content(
+                    os.path.join(PROJECT_DIR, "apps", "dataset", 'sql', 'list_problem_mapping.sql')),
+                with_table_name=True)
+            data_dict, document_dict = self.merge_problem(paragraph_list, problem_mapping_list, [document])
+            res = [parse_image(paragraph.get('content')) for paragraph in paragraph_list]
+
+            workbook = DocumentSerializers.Operate.get_workbook(data_dict, document_dict)
+            response = HttpResponse(content_type='application/zip')
+            response['Content-Disposition'] = 'attachment; filename="archive.zip"'
+            zip_buffer = io.BytesIO()
+            with TemporaryDirectory() as tempdir:
+                dataset_file = os.path.join(tempdir, 'dataset.xlsx')
+                workbook.save(dataset_file)
+                for r in res:
+                    write_image(tempdir, r)
+                zip_dir(tempdir, zip_buffer)
+            response.write(zip_buffer.getvalue())
+            return response
+
         @staticmethod
         def get_workbook(data_dict, document_dict):
             # 创建工作簿对象
             workbook = openpyxl.Workbook()
             workbook.remove_sheet(workbook.active)
+            if len(data_dict.keys()) == 0:
+                data_dict['sheet'] = []
             for sheet_id in data_dict:
                 # 添加工作表
                 worksheet = workbook.create_sheet(document_dict.get(sheet_id))
@@ -580,17 +685,46 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
             _document.save()
             return self.one()
 
+        @transaction.atomic
         def refresh(self, with_valid=True):
             if with_valid:
                 self.is_valid(raise_exception=True)
             document_id = self.data.get("document_id")
-            QuerySet(Document).filter(id=document_id).update(**{'status': Status.queue_up})
-            QuerySet(Paragraph).filter(document_id=document_id).update(**{'status': Status.queue_up})
+            ListenerManagement.update_status(QuerySet(Document).filter(id=document_id), TaskType.EMBEDDING,
+                                             State.PENDING)
+            ListenerManagement.update_status(QuerySet(Paragraph).filter(document_id=document_id),
+                                             TaskType.EMBEDDING,
+                                             State.PENDING)
+            ListenerManagement.get_aggregation_document_status(document_id)()
             embedding_model_id = get_embedding_model_id_by_dataset_id(dataset_id=self.data.get('dataset_id'))
             try:
                 embedding_by_document.delay(document_id, embedding_model_id)
             except AlreadyQueued as e:
                 raise AppApiException(500, "任务正在执行中,请勿重复下发")
+
+        def cancel(self, instance, with_valid=True):
+            if with_valid:
+                self.is_valid(raise_exception=True)
+                CancelInstanceSerializer(data=instance).is_valid()
+            document_id = self.data.get("document_id")
+            ListenerManagement.update_status(QuerySet(Paragraph).annotate(
+                reversed_status=Reverse('status'),
+                task_type_status=Substr('reversed_status', TaskType(instance.get('type')).value,
+                                        1),
+            ).filter(task_type_status__in=[State.PENDING.value, State.STARTED.value]).filter(
+                document_id=document_id).values('id'),
+                                             TaskType(instance.get('type')),
+                                             State.REVOKE)
+            ListenerManagement.update_status(QuerySet(Document).annotate(
+                reversed_status=Reverse('status'),
+                task_type_status=Substr('reversed_status', TaskType(instance.get('type')).value,
+                                        1),
+            ).filter(task_type_status__in=[State.PENDING.value, State.STARTED.value]).filter(
+                id=document_id).values('id'),
+                                             TaskType(instance.get('type')),
+                                             State.REVOKE)
+
+            return True
 
         @transaction.atomic
         def delete(self):
@@ -599,7 +733,7 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
             # 删除段落
             QuerySet(model=Paragraph).filter(document_id=document_id).delete()
             # 删除问题
-            QuerySet(model=ProblemParagraphMapping).filter(document_id=document_id).delete()
+            delete_problems_and_mappings([document_id])
             # 删除向量库
             delete_embedding_by_document(document_id)
             return True
@@ -660,8 +794,8 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
 
         @staticmethod
         def post_embedding(result, document_id, dataset_id):
-            model_id = get_embedding_model_id_by_dataset_id(dataset_id)
-            embedding_by_document.delay(document_id, model_id)
+            DocumentSerializers.Operate(
+                data={'dataset_id': dataset_id, 'document_id': document_id}).refresh()
             return result
 
         @staticmethod
@@ -830,9 +964,9 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
 
         def parse(self):
             file_list = self.data.get("file")
-            return list(
-                map(lambda f: file_to_paragraph(f, self.data.get("patterns", None), self.data.get("with_filter", None),
-                                                self.data.get("limit", 4096)), file_list))
+            return reduce(lambda x, y: [*x, *y],
+                          [file_to_paragraph(f, self.data.get("patterns", None), self.data.get("with_filter", None),
+                                             self.data.get("limit", 4096)) for f in file_list], [])
 
     class SplitPattern(ApiMixin, serializers.Serializer):
         @staticmethod
@@ -859,8 +993,8 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
         @staticmethod
         def post_embedding(document_list, dataset_id):
             for document_dict in document_list:
-                model_id = get_embedding_model_id_by_dataset_id(dataset_id)
-                embedding_by_document.delay(document_dict.get('id'), model_id)
+                DocumentSerializers.Operate(
+                    data={'dataset_id': dataset_id, 'document_id': document_dict.get('id')}).refresh()
             return document_list
 
         @post(post_function=post_embedding)
@@ -889,12 +1023,11 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
             # 插入文档
             QuerySet(Document).bulk_create(document_model_list) if len(document_model_list) > 0 else None
             # 批量插入段落
-            QuerySet(Paragraph).bulk_create(paragraph_model_list) if len(paragraph_model_list) > 0 else None
+            bulk_create_in_batches(Paragraph, paragraph_model_list, batch_size=1000)
             # 批量插入问题
-            QuerySet(Problem).bulk_create(problem_model_list) if len(problem_model_list) > 0 else None
+            bulk_create_in_batches(Problem, problem_model_list, batch_size=1000)
             # 批量插入关联问题
-            QuerySet(ProblemParagraphMapping).bulk_create(problem_paragraph_mapping_list) if len(
-                problem_paragraph_mapping_list) > 0 else None
+            bulk_create_in_batches(ProblemParagraphMapping, problem_paragraph_mapping_list, batch_size=1000)
             # 查询文档
             query_set = QuerySet(model=Document)
             if len(document_model_list) == 0:
@@ -926,7 +1059,7 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
             document_id_list = instance.get("id_list")
             QuerySet(Document).filter(id__in=document_id_list).delete()
             QuerySet(Paragraph).filter(document_id__in=document_id_list).delete()
-            QuerySet(ProblemParagraphMapping).filter(document_id__in=document_id_list).delete()
+            delete_problems_and_mappings(document_id_list)
             # 删除向量库
             delete_embedding_by_document_list(document_id_list)
             return True
@@ -953,15 +1086,13 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
                 self.is_valid(raise_exception=True)
             document_id_list = instance.get("id_list")
             with transaction.atomic():
-                Document.objects.filter(id__in=document_id_list).update(status=Status.queue_up)
-                Paragraph.objects.filter(document_id__in=document_id_list).update(status=Status.queue_up)
                 dataset_id = self.data.get('dataset_id')
-                embedding_model_id = get_embedding_model_id_by_dataset_id(dataset_id=dataset_id)
                 for document_id in document_id_list:
                     try:
-                        embedding_by_document.delay(document_id, embedding_model_id)
+                        DocumentSerializers.Operate(
+                            data={'dataset_id': dataset_id, 'document_id': document_id}).refresh()
                     except AlreadyQueued as e:
-                        raise AppApiException(500, "任务正在执行中,请勿重复下发")
+                        pass
 
     class GenerateRelated(ApiMixin, serializers.Serializer):
         document_id = serializers.UUIDField(required=True, error_messages=ErrMessage.uuid("文档id"))
@@ -976,10 +1107,17 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
             if with_valid:
                 self.is_valid(raise_exception=True)
             document_id = self.data.get('document_id')
-            QuerySet(Document).filter(id=document_id).update(status=Status.queue_up)
-            generate_related_by_document_id.delay(document_id, model_id, prompt)
-
-
+            ListenerManagement.update_status(QuerySet(Document).filter(id=document_id),
+                                             TaskType.GENERATE_PROBLEM,
+                                             State.PENDING)
+            ListenerManagement.update_status(QuerySet(Paragraph).filter(document_id=document_id),
+                                             TaskType.GENERATE_PROBLEM,
+                                             State.PENDING)
+            ListenerManagement.get_aggregation_document_status(document_id)()
+            try:
+                generate_related_by_document_id.delay(document_id, model_id, prompt)
+            except AlreadyQueued as e:
+                raise AppApiException(500, "任务正在执行中,请勿重复下发")
 
     class BatchGenerateRelated(ApiMixin, serializers.Serializer):
         dataset_id = serializers.UUIDField(required=True, error_messages=ErrMessage.uuid("知识库id"))
@@ -992,7 +1130,8 @@ class DocumentSerializers(ApiMixin, serializers.Serializer):
             model_id = instance.get("model_id")
             prompt = instance.get("prompt")
             for document_id in document_id_list:
-                DocumentSerializers.GenerateRelated(data={'document_id': document_id}).generate_related(model_id, prompt)
+                DocumentSerializers.GenerateRelated(data={'document_id': document_id}).generate_related(model_id,
+                                                                                                        prompt)
 
 
 class FileBufferHandle:
@@ -1005,17 +1144,45 @@ class FileBufferHandle:
 
 
 default_split_handle = TextSplitHandle()
-split_handles = [HTMLSplitHandle(), DocSplitHandle(), PdfSplitHandle(), default_split_handle]
+split_handles = [HTMLSplitHandle(), DocSplitHandle(), PdfSplitHandle(), XlsxSplitHandle(), XlsSplitHandle(),
+                 CsvSplitHandle(),
+                 ZipSplitHandle(),
+                 default_split_handle]
 
 
 def save_image(image_list):
     if image_list is not None and len(image_list) > 0:
-        QuerySet(Image).bulk_create(image_list)
+        exist_image_list = [str(i.get('id')) for i in
+                            QuerySet(Image).filter(id__in=[i.id for i in image_list]).values('id')]
+        save_image_list = [image for image in image_list if not exist_image_list.__contains__(str(image.id))]
+        if len(save_image_list) > 0:
+            QuerySet(Image).bulk_create(save_image_list)
 
 
 def file_to_paragraph(file, pattern_list: List, with_filter: bool, limit: int):
     get_buffer = FileBufferHandle().get_buffer
     for split_handle in split_handles:
         if split_handle.support(file, get_buffer):
-            return split_handle.handle(file, pattern_list, with_filter, limit, get_buffer, save_image)
-    return default_split_handle.handle(file, pattern_list, with_filter, limit, get_buffer, save_image)
+            result = split_handle.handle(file, pattern_list, with_filter, limit, get_buffer, save_image)
+            if isinstance(result, list):
+                return result
+            return [result]
+    result = default_split_handle.handle(file, pattern_list, with_filter, limit, get_buffer, save_image)
+    if isinstance(result, list):
+        return result
+    return [result]
+
+
+def delete_problems_and_mappings(document_ids):
+    problem_paragraph_mappings = ProblemParagraphMapping.objects.filter(document_id__in=document_ids)
+    problem_ids = set(problem_paragraph_mappings.values_list('problem_id', flat=True))
+
+    if problem_ids:
+        problem_paragraph_mappings.delete()
+        remaining_problem_counts = ProblemParagraphMapping.objects.filter(problem_id__in=problem_ids).values(
+            'problem_id').annotate(count=Count('problem_id'))
+        remaining_problem_ids = {pc['problem_id'] for pc in remaining_problem_counts}
+        problem_ids_to_delete = problem_ids - remaining_problem_ids
+        Problem.objects.filter(id__in=problem_ids_to_delete).delete()
+    else:
+        problem_paragraph_mappings.delete()

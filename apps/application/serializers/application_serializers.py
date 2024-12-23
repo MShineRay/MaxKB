@@ -10,12 +10,12 @@ import datetime
 import hashlib
 import json
 import os
+import pickle
 import re
 import uuid
 from functools import reduce
 from typing import Dict, List
 
-from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.core import cache, validators
 from django.core import signing
@@ -23,7 +23,7 @@ from django.db import transaction, models
 from django.db.models import QuerySet
 from django.http import HttpResponse
 from django.template import Template, Context
-from rest_framework import serializers
+from rest_framework import serializers, status
 
 from application.flow.workflow_manage import Flow
 from application.models import Application, ApplicationDatasetMapping, ApplicationTypeChoices, WorkFlowVersion
@@ -35,25 +35,33 @@ from common.constants.authentication_type import AuthenticationType
 from common.db.search import get_dynamics_model, native_search, native_page_search
 from common.db.sql_execute import select_list
 from common.exception.app_exception import AppApiException, NotFound404, AppUnauthorizedFailed
-from common.field.common import UploadedImageField
+from common.field.common import UploadedImageField, UploadedFileField
 from common.models.db_model_manage import DBModelManage
+from common.response import result
 from common.util.common import valid_license, password_encrypt
 from common.util.field_message import ErrMessage
 from common.util.file_util import get_file_content
 from dataset.models import DataSet, Document, Image
 from dataset.serializers.common_serializers import list_paragraph, get_embedding_model_by_dataset_id_list
 from embedding.models import SearchMode
-from function_lib.serializers.function_lib_serializer import FunctionLibSerializer
+from function_lib.models.function import FunctionLib, PermissionType
+from function_lib.serializers.function_lib_serializer import FunctionLibSerializer, FunctionLibModelSerializer
 from setting.models import AuthOperate
 from setting.models.model_management import Model
 from setting.models_provider import get_model_credential
-from setting.models_provider.constants.model_provider_constants import ModelProvideConstants
 from setting.models_provider.tools import get_model_instance_by_model_user_id
 from setting.serializers.provider_serializers import ModelSerializer
 from smartdoc.conf import PROJECT_DIR
 from users.models import User
 
 chat_cache = cache.caches['chat_cache']
+
+
+class MKInstance:
+    def __init__(self, application: dict, function_lib_list: List[dict], version: str):
+        self.application = application
+        self.function_lib_list = function_lib_list
+        self.version = version
 
 
 class ModelDatasetAssociation(serializers.Serializer):
@@ -149,9 +157,9 @@ class ApplicationWorkflowSerializer(serializers.Serializer):
             default_workflow = json.loads(default_workflow_json)
         for node in default_workflow.get('nodes'):
             if node.get('id') == 'base-node':
-                node.get('properties')['node_data'] = {"desc": application.get('desc'),
-                                                       "name": application.get('name'),
-                                                       "prologue": application.get('prologue')}
+                node.get('properties')['node_data']['desc'] = application.get('desc')
+                node.get('properties')['node_data']['name'] = application.get('name')
+                node.get('properties')['node_data']['prologue'] = application.get('prologue')
         return Application(id=uuid.uuid1(),
                            name=application.get('name'),
                            desc=application.get('desc'),
@@ -162,6 +170,14 @@ class ApplicationWorkflowSerializer(serializers.Serializer):
                            model_setting={},
                            problem_optimization=False,
                            type=ApplicationTypeChoices.WORK_FLOW,
+                           stt_model_enable=application.get('stt_model_enable', False),
+                           stt_model_id=application.get('stt_model', None),
+                           tts_model_id=application.get('tts_model', None),
+                           tts_model_enable=application.get('tts_model_enable', False),
+                           tts_model_params_setting=application.get('tts_model_params_setting', {}),
+                           tts_type=application.get('tts_type', None),
+                           file_upload_enable=application.get('file_upload_enable', False),
+                           file_upload_setting=application.get('file_upload_setting', {}),
                            work_flow=default_workflow
                            )
 
@@ -504,6 +520,14 @@ class ApplicationSerializer(serializers.Serializer):
                                type=ApplicationTypeChoices.SIMPLE,
                                model_params_setting=application.get('model_params_setting', {}),
                                problem_optimization_prompt=application.get('problem_optimization_prompt', None),
+                               stt_model_enable=application.get('stt_model_enable', False),
+                               stt_model_id=application.get('stt_model', None),
+                               tts_model_id=application.get('tts_model', None),
+                               tts_model_enable=application.get('tts_model_enable', False),
+                               tts_model_params_setting=application.get('tts_model_params_setting', {}),
+                               tts_type=application.get('tts_type', None),
+                               file_upload_enable=application.get('file_upload_enable', False),
+                               file_upload_setting=application.get('file_upload_setting', {}),
                                work_flow={}
                                )
 
@@ -559,17 +583,22 @@ class ApplicationSerializer(serializers.Serializer):
         desc = serializers.CharField(required=False, error_messages=ErrMessage.char("应用描述"))
 
         user_id = serializers.UUIDField(required=True, error_messages=ErrMessage.uuid("用户id"))
+        select_user_id = serializers.UUIDField(required=False, error_messages=ErrMessage.uuid("选择用户id"))
 
         def get_query_set(self):
             user_id = self.data.get("user_id")
             query_set_dict = {}
             query_set = QuerySet(model=get_dynamics_model(
                 {'temp_application.name': models.CharField(), 'temp_application.desc': models.CharField(),
-                 'temp_application.create_time': models.DateTimeField()}))
+                 'temp_application.create_time': models.DateTimeField(),
+                 'temp_application.user_id': models.CharField(), }))
             if "desc" in self.data and self.data.get('desc') is not None:
                 query_set = query_set.filter(**{'temp_application.desc__icontains': self.data.get("desc")})
             if "name" in self.data and self.data.get('name') is not None:
                 query_set = query_set.filter(**{'temp_application.name__icontains': self.data.get("name")})
+            if 'select_user_id' in self.data and self.data.get('select_user_id') is not None and self.data.get(
+                    'select_user_id') != 'all':
+                query_set = query_set.filter(**{'temp_application.user_id__exact': self.data.get('select_user_id')})
             query_set = query_set.order_by("-temp_application.create_time")
             query_set_dict['default_sql'] = query_set
 
@@ -643,11 +672,75 @@ class ApplicationSerializer(serializers.Serializer):
             get_application_access_token(application_access_token.access_token, False)
             return {**ApplicationSerializer.Query.reset_application(ApplicationSerializerModel(application).data)}
 
+    class Import(serializers.Serializer):
+        file = UploadedFileField(required=True, error_messages=ErrMessage.image("文件"))
+        user_id = serializers.UUIDField(required=True, error_messages=ErrMessage.uuid("用户id"))
+
+        @valid_license(model=Application, count=5,
+                       message='社区版最多支持 5 个应用，如需拥有更多应用，请联系我们（https://fit2cloud.com/）。')
+        @transaction.atomic
+        def import_(self, with_valid=True):
+            if with_valid:
+                self.is_valid()
+            user_id = self.data.get('user_id')
+            mk_instance_bytes = self.data.get('file').read()
+            mk_instance = pickle.loads(mk_instance_bytes)
+            application = mk_instance.application
+            function_lib_list = mk_instance.function_lib_list
+            if len(function_lib_list) > 0:
+                function_lib_id_list = [function_lib.get('id') for function_lib in function_lib_list]
+                exits_function_lib_id_list = [str(function_lib.id) for function_lib in
+                                              QuerySet(FunctionLib).filter(id__in=function_lib_id_list)]
+                # 获取到需要插入的函数
+                function_lib_list = [function_lib for function_lib in function_lib_list if
+                                     not exits_function_lib_id_list.__contains__(function_lib.get('id'))]
+            application_model = self.to_application(application, user_id)
+            function_lib_model_list = [self.to_function_lib(f, user_id) for f in function_lib_list]
+            application_model.save()
+            QuerySet(FunctionLib).bulk_create(function_lib_model_list) if len(function_lib_model_list) > 0 else None
+            return True
+
+        @staticmethod
+        def to_application(application, user_id):
+            work_flow = application.get('work_flow')
+            for node in work_flow.get('nodes', []):
+                if node.get('type') == 'search-dataset-node':
+                    node.get('properties', {}).get('node_data', {})['dataset_id_list'] = []
+            return Application(id=uuid.uuid1(), user_id=user_id, name=application.get('name'),
+                               desc=application.get('desc'),
+                               prologue=application.get('prologue'), dialogue_number=application.get('dialogue_number'),
+                               dataset_setting=application.get('dataset_setting'),
+                               model_params_setting=application.get('model_params_setting'),
+                               tts_model_params_setting=application.get('tts_model_params_setting'),
+                               problem_optimization=application.get('problem_optimization'),
+                               icon=application.get('icon'),
+                               work_flow=work_flow,
+                               type=application.get('type'),
+                               problem_optimization_prompt=application.get('problem_optimization_prompt'),
+                               tts_model_enable=application.get('tts_model_enable'),
+                               stt_model_enable=application.get('stt_model_enable'),
+                               tts_type=application.get('tts_type'),
+                               clean_time=application.get('clean_time'),
+                               file_upload_enable=application.get('file_upload_enable'),
+                               file_upload_setting=application.get('file_upload_setting'),
+                               )
+
+        @staticmethod
+        def to_function_lib(function_lib, user_id):
+            """
+
+            @param user_id: 用户id
+            @param function_lib: 函数库
+            @return:
+            """
+            return FunctionLib(id=function_lib.get('id'), user_id=user_id, name=function_lib.get('name'),
+                               code=function_lib.get('code'), input_field_list=function_lib.get('input_field_list'),
+                               is_active=function_lib.get('is_active'),
+                               permission_type=PermissionType.PRIVATE)
+
     class Operate(serializers.Serializer):
         application_id = serializers.UUIDField(required=True, error_messages=ErrMessage.uuid("应用id"))
         user_id = serializers.UUIDField(required=True, error_messages=ErrMessage.uuid("用户id"))
-        model_id = serializers.UUIDField(required=False, error_messages=ErrMessage.uuid("模型id"))
-        ai_node_id = serializers.UUIDField(required=False, error_messages=ErrMessage.uuid("AI节点id"))
 
         def is_valid(self, *, raise_exception=False):
             super().is_valid(raise_exception=True)
@@ -691,6 +784,31 @@ class ApplicationSerializer(serializers.Serializer):
             QuerySet(Application).filter(id=self.data.get('application_id')).delete()
             return True
 
+        def export(self, with_valid=True):
+            try:
+                if with_valid:
+                    self.is_valid()
+                application_id = self.data.get('application_id')
+                application = QuerySet(Application).filter(id=application_id).first()
+                function_lib_id_list = [node.get('properties', {}).get('node_data', {}).get('function_lib_id') for node
+                                        in
+                                        application.work_flow.get('nodes', []) if
+                                        node.get('type') == 'function-lib-node']
+                function_lib_list = []
+                if len(function_lib_id_list) > 0:
+                    function_lib_list = QuerySet(FunctionLib).filter(id__in=function_lib_id_list)
+                application_dict = ApplicationSerializerModel(application).data
+
+                mk_instance = MKInstance(application_dict,
+                                         [FunctionLibModelSerializer(function_lib).data for function_lib in
+                                          function_lib_list], 'v1')
+                application_pickle = pickle.dumps(mk_instance)
+                response = HttpResponse(content_type='text/plain', content=application_pickle)
+                response['Content-Disposition'] = f'attachment; filename="{application.name}.mk"'
+                return response
+            except Exception as e:
+                return result.error(str(e), response_status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         @transaction.atomic
         def publish(self, instance, with_valid=True):
             if with_valid:
@@ -716,6 +834,7 @@ class ApplicationSerializer(serializers.Serializer):
             application.save()
             # 插入知识库关联关系
             self.save_application_mapping(application_dataset_id_list, dataset_id_list, application.id)
+            chat_cache.clear_by_application_id(str(application.id))
             work_flow_version = WorkFlowVersion(work_flow=work_flow, application=application,
                                                 name=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                                                 publish_user_id=user_id,
@@ -821,6 +940,8 @@ class ApplicationSerializer(serializers.Serializer):
                  'stt_model_enable': application.stt_model_enable,
                  'tts_model_enable': application.tts_model_enable,
                  'tts_type': application.tts_type,
+                 'file_upload_enable': application.file_upload_enable,
+                 'file_upload_setting': application.file_upload_setting,
                  'work_flow': application.work_flow,
                  'show_source': application_access_token.show_source,
                  **application_setting_dict})
@@ -832,8 +953,6 @@ class ApplicationSerializer(serializers.Serializer):
                 ApplicationSerializer.Edit(data=instance).is_valid(
                     raise_exception=True)
             application_id = self.data.get("application_id")
-            valid_model_params_setting(instance.get('model_id'),
-                                       instance.get('model_params_setting'))
 
             application = QuerySet(Application).get(id=application_id)
             if instance.get('model_id') is None or len(instance.get('model_id')) == 0:
@@ -874,6 +993,7 @@ class ApplicationSerializer(serializers.Serializer):
             update_keys = ['name', 'desc', 'model_id', 'multiple_rounds_dialogue', 'prologue', 'status',
                            'dataset_setting', 'model_setting', 'problem_optimization', 'dialogue_number',
                            'stt_model_id', 'tts_model_id', 'tts_model_enable', 'stt_model_enable', 'tts_type',
+                           'file_upload_enable', 'file_upload_setting',
                            'api_key_is_active', 'icon', 'work_flow', 'model_params_setting', 'tts_model_params_setting',
                            'problem_optimization_prompt', 'clean_time']
             for update_key in update_keys:
@@ -919,65 +1039,6 @@ class ApplicationSerializer(serializers.Serializer):
                 [self.data.get('user_id') if self.data.get('user_id') == str(application.user_id) else None,
                  application.user_id, self.data.get('user_id')])
 
-        def get_other_file_list(self):
-            temperature = None
-            max_tokens = None
-            application_id = self.initial_data.get("application_id")
-            ai_node_id = self.initial_data.get("ai_node_id")
-            model_id = self.initial_data.get("model_id")
-
-            application = Application.objects.filter(id=application_id).first()
-            if application:
-                if application.type == 'SIMPLE':
-                    setting_dict = application.model_setting
-                    temperature = setting_dict.get("temperature")
-                    max_tokens = setting_dict.get("max_tokens")
-                elif application.type == 'WORK_FLOW':
-                    work_flow = application.work_flow
-                    api_node = next((node for node in work_flow.get('nodes', []) if node.get('id') == ai_node_id), None)
-                    if api_node:
-                        node_data = api_node.get('properties', {}).get('node_data', {})
-                        temperature = node_data.get("temperature")
-                        max_tokens = node_data.get("max_tokens")
-
-            model = Model.objects.filter(id=model_id).first()
-            if model:
-                res = ModelProvideConstants[model.provider].value.get_model_credential(model.model_type,
-                                                                                       model.model_name).get_other_fields(
-                    model.model_name)
-                if temperature is not None and 'temperature' in res:
-                    res['temperature']['value'] = temperature
-                if max_tokens is not None and 'max_tokens' in res:
-                    res['max_tokens']['value'] = max_tokens
-                return res
-
-        def save_other_config(self, data):
-            application = Application.objects.filter(id=self.initial_data.get("application_id")).first()
-            if not application:
-                return
-
-            if application.type == 'SIMPLE':
-                setting_dict = application.model_setting
-                for key in ['max_tokens', 'temperature']:
-                    if key in data:
-                        setting_dict[key] = data[key]
-                application.model_setting = setting_dict
-
-            elif application.type == 'WORK_FLOW':
-                work_flow = application.work_flow
-                ai_node_id = data.get("node_id")
-                for api_node in work_flow.get('nodes', []):
-                    if api_node.get('id') == ai_node_id:
-                        node_data = api_node.get('properties', {}).get('node_data', {})
-                        for key in ['max_tokens', 'temperature']:
-                            if key in data:
-                                node_data[key] = data[key]
-                        api_node['properties']['node_data'] = node_data
-                        break
-                application.work_flow = work_flow
-
-            application.save()
-
         @staticmethod
         def get_work_flow_model(instance):
             if 'nodes' not in instance.get('work_flow'):
@@ -998,6 +1059,10 @@ class ApplicationSerializer(serializers.Serializer):
                         instance['tts_type'] = node_data['tts_type']
                     if 'tts_model_params_setting' in node_data:
                         instance['tts_model_params_setting'] = node_data['tts_model_params_setting']
+                    if 'file_upload_enable' in node_data:
+                        instance['file_upload_enable'] = node_data['file_upload_enable']
+                    if 'file_upload_setting' in node_data:
+                        instance['file_upload_setting'] = node_data['file_upload_setting']
                     break
 
         def speech_to_text(self, file, with_valid=True):
@@ -1027,9 +1092,21 @@ class ApplicationSerializer(serializers.Serializer):
                 self.is_valid(raise_exception=True)
             application_id = self.data.get('application_id')
             application = QuerySet(Application).filter(id=application_id).first()
-            if application.tts_model_enable:
-                model = get_model_instance_by_model_user_id(application.tts_model_id, application.user_id, **form_data)
-                return model.text_to_speech(text)
+            if 'tts_model_id' in form_data:
+                tts_model_id = form_data.pop('tts_model_id')
+            model = get_model_instance_by_model_user_id(tts_model_id, application.user_id, **form_data)
+            return model.text_to_speech(text)
+
+        def application_list(self, with_valid=True):
+            if with_valid:
+                self.is_valid(raise_exception=True)
+            user_id = self.data.get('user_id')
+            application_id = self.data.get('application_id')
+            application = Application.objects.filter(user_id=user_id).exclude(id=application_id)
+            # 把应用的type为WORK_FLOW的应用放到最上面 然后再按名称排序
+            serialized_data = ApplicationSerializerModel(application, many=True).data
+            application = sorted(serialized_data, key=lambda x: (x['type'] != 'WORK_FLOW', x['name']))
+            return list(application)
 
     class ApplicationKeySerializerModel(serializers.ModelSerializer):
         class Meta:

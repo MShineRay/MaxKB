@@ -9,12 +9,12 @@
   >
     <template #defFooters>
       <el-button text type="info" @click="openDialog">
-        <AppIcon iconName="app-magnify" style="font-size: 16px"></AppIcon>
+        <AppIcon class="color-secondary"  iconName="app-magnify" style="font-size: 16px"></AppIcon>
       </el-button>
     </template>
   </MdEditor>
   <!-- 回复内容弹出层 -->
-  <el-dialog v-model="dialogVisible" :title="title" append-to-body>
+  <el-dialog v-model="dialogVisible" :title="title" append-to-body align-center>
     <MdEditor v-model="cloneContent" :preview="false" :toolbars="[]" :footers="[]"></MdEditor>
     <template #footer>
       <div class="dialog-footer mt-24">

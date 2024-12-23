@@ -1,5 +1,5 @@
 import { Result } from '@/request/Result'
-import { get, post, postStream, del, put, request, download } from '@/request/index'
+import { get, post, postStream, del, put, request, download, exportFile } from '@/request/index'
 import type { pageRequest } from '@/api/type/common'
 import type { ApplicationFormType } from '@/api/type/application'
 import { type Ref } from 'vue'
@@ -286,6 +286,20 @@ const getApplicationTTSModel: (
   return get(`${prefix}/${application_id}/model`, { model_type: 'TTS' }, loading)
 }
 
+const getApplicationImageModel: (
+  application_id: string,
+  loading?: Ref<boolean>
+) => Promise<Result<Array<any>>> = (application_id, loading) => {
+  return get(`${prefix}/${application_id}/model`, { model_type: 'IMAGE' }, loading)
+}
+
+const getApplicationTTIModel: (
+  application_id: string,
+  loading?: Ref<boolean>
+) => Promise<Result<Array<any>>> = (application_id, loading) => {
+  return get(`${prefix}/${application_id}/model`, { model_type: 'TTI' }, loading)
+}
+
 /**
  * 发布应用
  * @param 参数
@@ -308,6 +322,18 @@ const listFunctionLib: (application_id: String, loading?: Ref<boolean>) => Promi
   loading
 ) => {
   return get(`${prefix}/${application_id}/function_lib`, undefined, loading)
+}
+/**
+ * 获取当前人的所有应用列表
+ * @param application_id 应用id
+ * @param loading
+ * @returns
+ */
+export const getApplicationList: (
+  application_id: string,
+  loading?: Ref<boolean>
+) => Promise<Result<any>> = (application_id, loading) => {
+  return get(`${prefix}/${application_id}/application`, undefined, loading)
 }
 /**
  * 获取应用所属的函数库
@@ -336,6 +362,18 @@ const getModelParamsForm: (
   loading?: Ref<boolean>
 ) => Promise<Result<Array<FormField>>> = (application_id, model_id, loading) => {
   return get(`${prefix}/${application_id}/model_params_form/${model_id}`, undefined, loading)
+}
+
+/**
+ * 上传文档图片附件
+ */
+const uploadFile: (
+  application_id: String,
+  chat_id: String,
+  data: any,
+  loading?: Ref<boolean>
+) => Promise<Result<any>> = (application_id, chat_id, data, loading) => {
+  return post(`${prefix}/${application_id}/chat/${chat_id}/upload_file`, data, undefined, loading)
 }
 
 /**
@@ -456,6 +494,35 @@ const putWorkFlowVersion: (
   )
 }
 
+const getUserList: (type: string, loading?: Ref<boolean>) => Promise<Result<any>> = (
+  type,
+  loading
+) => {
+  return get(`/user/list/${type}`, undefined, loading)
+}
+
+const exportApplication = (
+  application_id: string,
+  application_name: string,
+  loading?: Ref<boolean>
+) => {
+  return exportFile(
+    application_name + '.mk',
+    `/application/${application_id}/export`,
+    undefined,
+    loading
+  )
+}
+
+/**
+ * 导入应用
+ */
+const importApplication: (data: any, loading?: Ref<boolean>) => Promise<Result<any>> = (
+  data,
+  loading
+) => {
+  return post(`${prefix}/import`, data, undefined, loading)
+}
 export default {
   getAllAppilcation,
   getApplication,
@@ -482,6 +549,8 @@ export default {
   getApplicationRerankerModel,
   getApplicationSTTModel,
   getApplicationTTSModel,
+  getApplicationImageModel,
+  getApplicationTTIModel,
   postSpeechToText,
   postTextToSpeech,
   getPlatformStatus,
@@ -492,5 +561,10 @@ export default {
   getWorkFlowVersion,
   getWorkFlowVersionDetail,
   putWorkFlowVersion,
-  playDemoText
+  playDemoText,
+  getUserList,
+  getApplicationList,
+  uploadFile,
+  exportApplication,
+  importApplication
 }

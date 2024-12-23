@@ -8,16 +8,36 @@
     >
   </div>
   <div class="mt-8" v-if="!isWorkFlow(props.type)">
-    <el-space wrap>
-      <el-button
-        v-for="(dataset, index) in data.dataset_list"
-        :key="index"
-        size="small"
-        class="source_dataset-button"
-        @click="openParagraph(data, dataset.id)"
-        >{{ dataset.name }}</el-button
-      >
-    </el-space>
+    <el-row :gutter="8" v-if="uniqueParagraphList?.length">
+      <template v-for="(item, index) in uniqueParagraphList" :key="index">
+        <el-col :span="12" class="mb-8">
+          <el-card shadow="never" class="file-List-card" data-width="40">
+            <div class="flex-between">
+              <div class="flex">
+                <img :src="getImgUrl(item && item?.document_name)" alt="" width="20" />
+                <div class="ml-4" v-if="!item.source_url">
+                  <p>{{ item && item?.document_name }}</p>
+                </div>
+                <div class="ml-8" v-else>
+                  <a
+                    :href="
+                      item.source_url && !item.source_url.endsWith('/')
+                        ? item.source_url + '/'
+                        : item.source_url
+                    "
+                    target="_blank"
+                    class="ellipsis"
+                    :title="item?.document_name?.trim()"
+                  >
+                    <span :title="item?.document_name?.trim()">{{ item?.document_name }}</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+      </template>
+    </el-row>
   </div>
 
   <div class="border-t color-secondary flex-between mt-12" style="padding-top: 12px">
@@ -41,11 +61,11 @@
   <ExecutionDetailDialog ref="ExecutionDetailDialogRef" />
 </template>
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import ParagraphSourceDialog from './ParagraphSourceDialog.vue'
 import ExecutionDetailDialog from './ExecutionDetailDialog.vue'
 import { isWorkFlow } from '@/utils/application'
-
+import { getImgUrl } from '@/utils/utils'
 const props = defineProps({
   data: {
     type: Object,
@@ -65,6 +85,24 @@ function openParagraph(row: any, id?: string) {
 function openExecutionDetail(row: any) {
   ExecutionDetailDialogRef.value.open(row)
 }
+const uniqueParagraphList = computed(() => {
+  const seen = new Set()
+  return (
+    props.data.paragraph_list?.filter((paragraph: any) => {
+      const key = paragraph.document_name.trim()
+      if (seen.has(key)) {
+        return false
+      }
+      seen.add(key)
+      // 判断如果 meta 属性不是 {} 需要json解析 转对象
+      if (paragraph.meta && typeof paragraph.meta === 'string') {
+        paragraph.meta = JSON.parse(paragraph.meta)
+        paragraph.source_url = paragraph.meta.source_url
+      }
+      return true
+    }) || []
+  )
+})
 </script>
 <style lang="scss" scoped>
 .source_dataset-button {

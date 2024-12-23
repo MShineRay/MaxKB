@@ -5,7 +5,7 @@
     v-model="dialogVisible"
     :close-on-click-modal="false"
     :close-on-press-escape="false"
-    destroy-on-close
+    :destroy-on-close="true"
     align-center
     class="display-setting-dialog"
   >
@@ -111,15 +111,21 @@
                   <img src="@/assets/display-bg3.png" alt="" width="270" class="ml-8" />
                 </div>
               </div>
-              <div style="position: absolute; bottom: 0">
+              <div
+                style="position: absolute; bottom: 0; padding-bottom: 8px; box-sizing: border-box"
+                class="p-16 text-center w-full"
+              >
                 <img src="@/assets/display-bg1.png" alt="" class="w-full" />
-                <div
-                  class="chat-width"
+                <el-text
+                  type="info"
                   v-if="xpackForm.disclaimer"
-                  style="align-items: center; text-align: center"
+                  class="mt-8"
+                  style="font-size: 12px"
                 >
-                  {{ xpackForm.disclaimer_value }}
-                </div>
+                  <auto-tooltip :content="xpackForm.disclaimer_value">
+                    {{ xpackForm.disclaimer_value }}
+                  </auto-tooltip>
+                </el-text>
               </div>
             </div>
           </div>
@@ -134,7 +140,7 @@
             />
             <img
               v-else
-              src="@/assets/logo/logo.svg"
+              src="/MaxKB.gif"
               height="50px"
               style="width: 40px; height: 40px; display: block"
             />
@@ -165,14 +171,14 @@
                 action="#"
                 :auto-upload="false"
                 :show-file-list="false"
-                accept="image/*"
+                accept="image/jpeg, image/png, image/gif"
                 :on-change="(file: any, fileList: any) => onChange(file, fileList, 'user_avatar')"
               >
                 <el-button size="small"> 替换 </el-button>
               </el-upload>
             </div>
             <el-text type="info" size="small"
-              >建议尺寸 64*64，支持 JPG、PNG, GIF，大小不超过 10 MB</el-text
+              >建议尺寸 32*32，支持 JPG、PNG、GIF，大小不超过 10 MB</el-text
             >
           </el-card>
           <el-card shadow="never" class="mb-8">
@@ -184,14 +190,14 @@
                 action="#"
                 :auto-upload="false"
                 :show-file-list="false"
-                accept="image/*"
+                accept="image/jpeg, image/png, image/gif"
                 :on-change="(file: any, fileList: any) => onChange(file, fileList, 'avatar')"
               >
                 <el-button size="small"> 替换 </el-button>
               </el-upload>
             </div>
-            <el-text type="info" size="small"
-              >建议尺寸 32*32，支持 JPG、PNG, GIF，大小不超过 10 MB</el-text
+            <el-text type="info" size="small">
+              建议尺寸 32*32，支持 JPG、PNG、GIF，大小不超过 10 MB</el-text
             >
           </el-card>
           <el-card shadow="never" class="mb-8">
@@ -202,14 +208,14 @@
                 action="#"
                 :auto-upload="false"
                 :show-file-list="false"
-                accept="image/*"
+                accept="image/jpeg, image/png, image/gif"
                 :on-change="(file: any, fileList: any) => onChange(file, fileList, 'float_icon')"
               >
                 <el-button size="small"> 替换 </el-button>
               </el-upload>
             </div>
             <el-text type="info" size="small">
-              建议尺寸 64*64，支持 JPG、PNG, GIF，大小不超过 10 MB
+              建议尺寸 32*32，支持 JPG、PNG、GIF，大小不超过 10 MB
             </el-text>
             <div class="border-t mt-8">
               <div class="flex-between mb-8">
@@ -227,6 +233,9 @@
                       v-model="form.float_location.x.value"
                       :min="0"
                       :step="1"
+                      :precision="0"
+                      :value-on-clear="0"
+                      step-strictly
                       controls-position="right"
                     />
                     <span class="ml-4">px</span>
@@ -242,6 +251,9 @@
                       v-model="form.float_location.y.value"
                       :min="0"
                       :step="1"
+                      :precision="0"
+                      :value-on-clear="0"
+                      step-strictly
                       controls-position="right"
                     />
                     <span class="ml-4">px</span>
@@ -255,12 +267,16 @@
             <el-checkbox v-model="form.show_source" label="显示知识来源" />
             <el-checkbox v-model="form.show_history" label="显示历史记录" />
             <el-checkbox v-model="form.show_guide" label="显示引导图（浮窗模式）" />
-            <el-checkbox v-model="form.disclaimer" label="免责声明" />
-            <el-input
-              v-if="form.disclaimer"
-              v-model="form.disclaimer_value"
-              style="width: 422px; margin-bottom: 10px"
-            />
+            <el-checkbox v-model="form.disclaimer" label="免责声明" @change="changeDisclaimer" />
+            <span v-if="form.disclaimer"
+              ><el-tooltip :content="form.disclaimer_value" placement="top">
+                <el-input
+                  v-model="form.disclaimer_value"
+                  style="width: 422px; margin-bottom: 10px"
+                  @change="changeValue"
+                  :maxlength="128"
+                /> </el-tooltip
+            ></span>
           </el-space>
         </el-form>
       </el-col>
@@ -287,6 +303,7 @@ import applicationXpackApi from '@/api/application-xpack'
 import { MsgSuccess, MsgError } from '@/utils/message'
 import { t } from '@/locales'
 import useStore from '@/stores'
+import { cloneDeep } from 'lodash'
 const { user } = useStore()
 
 const route = useRoute()
@@ -302,10 +319,13 @@ const defaultSetting = {
   draggable: true,
   show_guide: true,
   avatar: '',
+  avatar_url: '',
   float_icon: '',
+  float_icon_url: '',
   user_avatar: '',
-  disclaimer: true,
-  disclaimer_value: '「以上内容均由AI生成，仅供参考和借鉴」',
+  user_avatar_url: '',
+  disclaimer: false,
+  disclaimer_value: '「以上内容均由 AI 生成，仅供参考和借鉴」',
   custom_theme: {
     theme_color: '',
     header_font_color: '#1f2329'
@@ -327,10 +347,13 @@ const xpackForm = ref<any>({
   draggable: false,
   show_guide: false,
   avatar: '',
+  avatar_url: '',
   float_icon: '',
+  float_icon_url: '',
   user_avatar: '',
-  disclaimer: true,
-  disclaimer_value: '「以上内容均由AI生成，仅供参考和借鉴」',
+  user_avatar_url: '',
+  disclaimer: false,
+  disclaimer_value: '「以上内容均由 AI 生成，仅供参考和借鉴」',
   custom_theme: {
     theme_color: '',
     header_font_color: '#1f2329'
@@ -343,7 +366,8 @@ const xpackForm = ref<any>({
 
 const imgUrl = ref<any>({
   avatar: '',
-  float_icon: ''
+  float_icon: '',
+  user_avatar: ''
 })
 
 const dialogVisible = ref<boolean>(false)
@@ -359,12 +383,8 @@ const customStyle = computed(() => {
 })
 
 function resetForm() {
-  form.value = {
-    ...defaultSetting
-  }
-  xpackForm.value = {
-    ...defaultSetting
-  }
+  form.value = cloneDeep(defaultSetting)
+  xpackForm.value = cloneDeep(defaultSetting)
   imgUrl.value = {
     avatar: '',
     float_icon: '',
@@ -382,6 +402,7 @@ const onChange = (file: any, fileList: UploadFiles, attr: string) => {
   } else {
     xpackForm.value[attr] = file.raw
     imgUrl.value[attr] = URL.createObjectURL(file.raw)
+    xpackForm.value[`${attr}_url`] = ''
   }
 }
 
@@ -396,14 +417,24 @@ const open = (data: any, content: any) => {
   imgUrl.value.user_avatar = data.user_avatar
   xpackForm.value.disclaimer = data.disclaimer
   xpackForm.value.disclaimer_value = data.disclaimer_value
+  xpackForm.value.avatar_url = data.avatar
+  xpackForm.value.user_avatar_url = data.user_avatar
+  xpackForm.value.float_icon_url = data.float_icon
   xpackForm.value.custom_theme = {
     theme_color: data.custom_theme?.theme_color || '',
     header_font_color: data.custom_theme?.header_font_color || '#1f2329'
   }
   xpackForm.value.float_location = data.float_location
   form.value = xpackForm.value
-
   dialogVisible.value = true
+}
+
+const changeValue = (value: string) => {
+  xpackForm.value.disclaimer_value = value
+}
+
+const changeDisclaimer = (value: boolean) => {
+  xpackForm.value.disclaimer = value
 }
 
 const submit = async (formEl: FormInstance | undefined) => {
@@ -411,11 +442,11 @@ const submit = async (formEl: FormInstance | undefined) => {
   await formEl.validate((valid, fields) => {
     if (valid) {
       let fd = new FormData()
-      Object.keys(form.value).map((item) => {
+      Object.keys(xpackForm.value).map((item) => {
         if (['custom_theme', 'float_location'].includes(item)) {
-          fd.append(item, JSON.stringify(form.value[item]))
+          fd.append(item, JSON.stringify(xpackForm.value[item]))
         } else {
-          fd.append(item, form.value[item])
+          fd.append(item, xpackForm.value[item])
         }
       })
       applicationXpackApi.putAccessToken(id as string, fd, loading).then((res) => {
@@ -446,12 +477,7 @@ defineExpose({ open })
     top: 25px;
     border-radius: 8px;
     border: 1px solid #ffffff;
-    background: linear-gradient(
-        188deg,
-        rgba(235, 241, 255, 0.2) 39.6%,
-        rgba(231, 249, 255, 0.2) 94.3%
-      ),
-      #eff0f1;
+    background: var(--dialog-bg-gradient-color);
     box-shadow: 0px 4px 8px 0px rgba(31, 35, 41, 0.1);
     overflow: hidden;
     width: 330px;

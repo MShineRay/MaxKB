@@ -1,6 +1,12 @@
 template
 <template>
-  <el-drawer v-model="visible" size="60%" :append-to-body="true">
+  <el-drawer
+    v-model="visible"
+    size="60%"
+    :append-to-body="true"
+    :destroy-on-close="true"
+    @close="handleClose"
+  >
     <template #header>
       <div class="flex align-center" style="margin-left: -8px">
         <h4>{{ currentPlatform.name + '设置' }}</h4>
@@ -21,12 +27,17 @@ template
         :prop="key"
         :rules="getValidationRules(key)"
       >
-        <el-input v-model="currentPlatform.config[key]" :default-value="''"></el-input>
+        <el-input
+          v-model="currentPlatform.config[key]"
+          :type="isPasswordField(key) ? 'password' : 'text'"
+          :show-password="isPasswordField(key)"
+        >
+        </el-input>
       </el-form-item>
     </el-form>
     <template #footer>
       <span class="dialog-footer">
-        <el-button @click="visible = false">取 消</el-button>
+        <el-button @click="handleClose">取 消</el-button>
         <el-button @click="validateConnection">校 验</el-button>
         <el-button type="primary" @click="validateForm">保 存</el-button>
       </span>
@@ -68,9 +79,9 @@ const currentPlatform = reactive<Platform>({
 
 const formatFieldName = (key?: any): string => {
   const fieldNames: { [key: string]: string } = {
-    app_key: 'APP Key',
-    app_secret: 'APP Secret',
     corp_id: 'Corp ID',
+    app_key: currentPlatform?.key != 'lark' ? 'APP Key' : 'App ID',
+    app_secret: 'APP Secret',
     agent_id: 'Agent ID',
     callback_url: '回调地址'
   }
@@ -107,12 +118,25 @@ const open = async (platform: Platform) => {
 
   // 设置默认的 callback_url
   let defaultCallbackUrl = window.location.origin
-
-  // 根据平台设置特定的 callback_url
   switch (platform.key) {
     case 'wecom':
+      if (currentPlatform.config.app_key) {
+        currentPlatform.config.agent_id = currentPlatform.config.app_key
+        delete currentPlatform.config.app_key
+      }
+      currentPlatform.config.callback_url = `${defaultCallbackUrl}/api/wecom`
+      break
     case 'dingtalk':
-      currentPlatform.config.callback_url = defaultCallbackUrl
+      if (currentPlatform.config.agent_id) {
+        currentPlatform.config.corp_id = currentPlatform.config.agent_id
+        delete currentPlatform.config.agent_id
+      }
+      currentPlatform.config = {
+        corp_id: currentPlatform.config.corp_id,
+        app_key: currentPlatform.config.app_key,
+        app_secret: currentPlatform.config.app_secret,
+        callback_url: defaultCallbackUrl
+      }
       break
     case 'lark':
       currentPlatform.config.callback_url = `${defaultCallbackUrl}/api/feishu`
@@ -120,6 +144,7 @@ const open = async (platform: Platform) => {
     default:
       break
   }
+  formRef.value?.clearValidate()
 }
 defineExpose({ open })
 
@@ -133,6 +158,12 @@ const validateForm = () => {
   })
 }
 
+const handleClose = () => {
+  visible.value = false
+  formRef.value?.clearValidate()
+  emit('refresh')
+}
+
 function validateConnection() {
   platformApi.validateConnection(currentPlatform, loading).then((res: any) => {
     if (res.data) {
@@ -143,11 +174,16 @@ function validateConnection() {
   })
 }
 
+const passwordFields = new Set(['app_secret', 'client_secret', 'secret'])
+
+const isPasswordField = (key: any) => passwordFields.has(key)
+const emit = defineEmits(['refresh'])
 function saveConfig() {
   platformApi.updateConfig(currentPlatform, loading).then((res: any) => {
     MsgSuccess('保存成功')
-
+    emit('refresh')
     visible.value = false
+    formRef.value?.clearValidate()
   })
 }
 </script>

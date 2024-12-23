@@ -9,17 +9,19 @@
 import uuid
 from typing import Dict
 
+from celery_once import AlreadyQueued
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import QuerySet, Count
 from drf_yasg import openapi
 from rest_framework import serializers
 
 from common.db.search import page_search
+from common.event import ListenerManagement
 from common.exception.app_exception import AppApiException
 from common.mixins.api_mixin import ApiMixin
 from common.util.common import post
 from common.util.field_message import ErrMessage
-from dataset.models import Paragraph, Problem, Document, ProblemParagraphMapping, DataSet
+from dataset.models import Paragraph, Problem, Document, ProblemParagraphMapping, DataSet, TaskType, State
 from dataset.serializers.common_serializers import update_document_char_length, BatchSerializer, ProblemParagraphObject, \
     ProblemParagraphManage, get_embedding_model_id_by_dataset_id
 from dataset.serializers.problem_serializers import ProblemInstanceSerializer, ProblemSerializer, ProblemSerializers
@@ -289,7 +291,7 @@ class ParagraphSerializers(ApiMixin, serializers.Serializer):
                 self.is_valid(raise_exception=True)
             paragraph_id_list = instance.get("id_list")
             QuerySet(Paragraph).filter(id__in=paragraph_id_list).delete()
-            QuerySet(ProblemParagraphMapping).filter(paragraph_id__in=paragraph_id_list).delete()
+            delete_problems_and_mappings(paragraph_id_list)
             update_document_char_length(self.data.get('document_id'))
             # 删除向量库
             delete_embedding_by_paragraph_ids(paragraph_id_list)
@@ -538,8 +540,9 @@ class ParagraphSerializers(ApiMixin, serializers.Serializer):
             if with_valid:
                 self.is_valid(raise_exception=True)
             paragraph_id = self.data.get('paragraph_id')
-            QuerySet(Paragraph).filter(id=paragraph_id).delete()
-            QuerySet(ProblemParagraphMapping).filter(paragraph_id=paragraph_id).delete()
+            Paragraph.objects.filter(id=paragraph_id).delete()
+            delete_problems_and_mappings([paragraph_id])
+
             update_document_char_length(self.data.get('document_id'))
             delete_embedding_by_paragraph(paragraph_id)
 
@@ -721,7 +724,6 @@ class ParagraphSerializers(ApiMixin, serializers.Serializer):
                 }
             )
 
-
     class BatchGenerateRelated(ApiMixin, serializers.Serializer):
         dataset_id = serializers.UUIDField(required=True, error_messages=ErrMessage.uuid("知识库id"))
         document_id = serializers.UUIDField(required=True, error_messages=ErrMessage.uuid("文档id"))
@@ -733,7 +735,31 @@ class ParagraphSerializers(ApiMixin, serializers.Serializer):
             paragraph_id_list = instance.get("paragraph_id_list")
             model_id = instance.get("model_id")
             prompt = instance.get("prompt")
-            generate_related_by_paragraph_id_list.delay(paragraph_id_list, model_id, prompt)
+            document_id = self.data.get('document_id')
+            ListenerManagement.update_status(QuerySet(Document).filter(id=document_id),
+                                             TaskType.GENERATE_PROBLEM,
+                                             State.PENDING)
+            ListenerManagement.update_status(QuerySet(Paragraph).filter(id__in=paragraph_id_list),
+                                             TaskType.GENERATE_PROBLEM,
+                                             State.PENDING)
+            ListenerManagement.get_aggregation_document_status(document_id)()
+            try:
+                generate_related_by_paragraph_id_list.delay(document_id, paragraph_id_list, model_id,
+                                                            prompt)
+            except AlreadyQueued as e:
+                raise AppApiException(500, "任务正在执行中,请勿重复下发")
 
 
+def delete_problems_and_mappings(paragraph_ids):
+    problem_paragraph_mappings = ProblemParagraphMapping.objects.filter(paragraph_id__in=paragraph_ids)
+    problem_ids = set(problem_paragraph_mappings.values_list('problem_id', flat=True))
 
+    if problem_ids:
+        problem_paragraph_mappings.delete()
+        remaining_problem_counts = ProblemParagraphMapping.objects.filter(problem_id__in=problem_ids).values(
+            'problem_id').annotate(count=Count('problem_id'))
+        remaining_problem_ids = {pc['problem_id'] for pc in remaining_problem_counts}
+        problem_ids_to_delete = problem_ids - remaining_problem_ids
+        Problem.objects.filter(id__in=problem_ids_to_delete).delete()
+    else:
+        problem_paragraph_mappings.delete()

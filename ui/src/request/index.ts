@@ -11,7 +11,7 @@ import { ref, type WritableComputedRef } from 'vue'
 const axiosConfig = {
   baseURL: '/api',
   withCredentials: false,
-  timeout: 60000,
+  timeout: 600000,
   headers: {}
 }
 
@@ -225,8 +225,8 @@ export const exportExcel: (
   params: any,
   loading?: NProgress | Ref<boolean>
 ) => {
-  return promise(request({ url: url, method: 'get', params, responseType: 'blob' }), loading)
-    .then((res: any) => {
+  return promise(request({ url: url, method: 'get', params, responseType: 'blob' }), loading).then(
+    (res: any) => {
       if (res) {
         const blob = new Blob([res], {
           type: 'application/vnd.ms-excel'
@@ -239,8 +239,37 @@ export const exportExcel: (
         window.URL.revokeObjectURL(link.href)
       }
       return true
-    })
-    .catch((e) => {})
+    }
+  )
+}
+
+export const exportFile: (
+  fileName: string,
+  url: string,
+  params: any,
+  loading?: NProgress | Ref<boolean>
+) => Promise<any> = (
+  fileName: string,
+  url: string,
+  params: any,
+  loading?: NProgress | Ref<boolean>
+) => {
+  return promise(request({ url: url, method: 'get', params, responseType: 'blob' }), loading).then(
+    (res: any) => {
+      if (res) {
+        const blob = new Blob([res], {
+          type: 'application/octet-stream'
+        })
+        const link = document.createElement('a')
+        link.href = window.URL.createObjectURL(blob)
+        link.download = fileName
+        link.click()
+        //释放内存
+        window.URL.revokeObjectURL(link.href)
+      }
+      return true
+    }
+  )
 }
 
 export const exportExcelPost: (
@@ -265,22 +294,20 @@ export const exportExcelPost: (
       responseType: 'blob'
     }),
     loading
-  )
-    .then((res: any) => {
-      if (res) {
-        const blob = new Blob([res], {
-          type: 'application/vnd.ms-excel'
-        })
-        const link = document.createElement('a')
-        link.href = window.URL.createObjectURL(blob)
-        link.download = fileName
-        link.click()
-        // 释放内存
-        window.URL.revokeObjectURL(link.href)
-      }
-      return true
-    })
-    .catch((e) => {})
+  ).then((res: any) => {
+    if (res) {
+      const blob = new Blob([res], {
+        type: 'application/vnd.ms-excel'
+      })
+      const link = document.createElement('a')
+      link.href = window.URL.createObjectURL(blob)
+      link.download = fileName
+      link.click()
+      // 释放内存
+      window.URL.revokeObjectURL(link.href)
+    }
+    return true
+  })
 }
 
 export const download: (

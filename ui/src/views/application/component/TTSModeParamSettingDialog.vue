@@ -28,13 +28,13 @@
           </el-button>
         </span>
         <span class="dialog-footer p-16">
-        <el-button @click.prevent="dialogVisible = false">
-          {{ $t('views.application.applicationForm.buttons.cancel') }}
-        </el-button>
-        <el-button type="primary" @click="submit" :loading="loading">
-          {{ $t('views.application.applicationForm.buttons.confirm') }}
-        </el-button>
-      </span>
+          <el-button @click.prevent="dialogVisible = false">
+            {{ $t('views.application.applicationForm.buttons.cancel') }}
+          </el-button>
+          <el-button type="primary" @click="submit" :loading="loading">
+            {{ $t('views.application.applicationForm.buttons.confirm') }}
+          </el-button>
+        </span>
       </div>
     </template>
   </el-dialog>
@@ -50,11 +50,13 @@ import applicationApi from '@/api/application'
 import DynamicsForm from '@/components/dynamics-form/index.vue'
 import { keys } from 'lodash'
 import { app } from '@/main'
+import { MsgError } from '@/utils/message'
 
 const {
   params: { id }
 } = app.config.globalProperties.$route as any
 
+const tts_model_id = ref('')
 const model_form_field = ref<Array<FormField>>([])
 const emit = defineEmits(['refresh'])
 const dynamicsFormRef = ref<InstanceType<typeof DynamicsForm>>()
@@ -69,15 +71,22 @@ const getApi = (model_id: string, application_id?: string) => {
 }
 const open = (model_id: string, application_id?: string, model_setting_data?: any) => {
   form_data.value = {}
+  tts_model_id.value = model_id
   const api = getApi(model_id, application_id)
   api.then((ok) => {
     model_form_field.value = ok.data
-    model_setting_data =
-      model_setting_data && keys(model_setting_data).length > 0
-        ? model_setting_data
-        : ok.data
-          .map((item: any) => ({ [item.field]: item.default_value }))
-          .reduce((x, y) => ({ ...x, ...y }), {})
+    const resp = ok.data
+      .map((item: any) => ({ [item.field]: item.default_value }))
+      .reduce((x, y) => ({ ...x, ...y }), {})
+    // 删除不存在的字段
+    if (model_setting_data) {
+      Object.keys(model_setting_data).forEach(key => {
+        if (!(key in resp)) {
+          delete model_setting_data[key];
+        }
+      });
+    }
+    model_setting_data = { ...resp, ...model_setting_data }
     // 渲染动态表单
     dynamicsFormRef.value?.render(model_form_field.value, model_setting_data)
   })
@@ -97,16 +106,26 @@ const reset_default = (model_id: string, application_id?: string) => {
 }
 
 const submit = async () => {
-  emit('refresh', form_data.value)
-  dialogVisible.value = false
+  dynamicsFormRef.value?.validate().then(() => {
+    emit('refresh', form_data.value)
+    dialogVisible.value = false
+  })
 }
-
 
 const audioPlayer = ref<HTMLAudioElement | null>(null)
 const testPlay = () => {
+  const data = {
+    ...form_data.value,
+    tts_model_id: tts_model_id.value
+  }
   applicationApi
-    .playDemoText(id as string, form_data.value, playLoading)
-    .then((res: any) => {
+    .playDemoText(id as string, data, playLoading)
+    .then(async (res: any) => {
+      if (res.type === 'application/json') {
+        const text = await res.text()
+        MsgError(text)
+        return
+      }
       // 创建 Blob 对象
       const blob = new Blob([res], { type: 'audio/mp3' })
 
@@ -124,9 +143,7 @@ const testPlay = () => {
     .catch((err) => {
       console.log('err: ', err)
     })
-
 }
-
 
 defineExpose({ open, reset_default })
 </script>

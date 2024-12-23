@@ -198,6 +198,8 @@
                   :value-on-clear="0"
                   controls-position="right"
                   class="w-full"
+                  :step="1"
+                  :step-strictly="true"
                 />
               </el-form-item>
               <el-form-item
@@ -252,12 +254,13 @@
                             <AppAvatar v-else class="mr-8 avatar-blue" shape="square" :size="32">
                               <img src="@/assets/icon_document.svg" style="width: 58%" alt="" />
                             </AppAvatar>
-                            <auto-tooltip
-                              :content="relatedObject(datasetList, item, 'id')?.name"
-                              style="width: 80%"
+
+                            <span
+                              class="ellipsis cursor"
+                              :title="relatedObject(datasetList, item, 'id')?.name"
                             >
-                              {{ relatedObject(datasetList, item, 'id')?.name }}
-                            </auto-tooltip>
+                              {{ relatedObject(datasetList, item, 'id')?.name }}</span
+                            >
                           </div>
                           <el-button text @click="removeDataset(item)">
                             <el-icon>
@@ -318,19 +321,23 @@
                   <div class="flex-between">
                     <div class="flex align-center">
                       <span class="mr-4">语音输入</span>
-                      <el-tooltip
+                      <!-- <el-tooltip
                         effect="dark"
                         content="开启后，需要设定语音转文本模型，语音输入完成后会转化为文字直接发送提问"
                         placement="right"
                       >
                         <AppIcon iconName="app-warning" class="app-warning-icon"></AppIcon>
-                      </el-tooltip>
+                      </el-tooltip> -->
                     </div>
-                    <el-switch size="small" v-model="applicationForm.stt_model_enable" />
+                    <el-switch
+                      size="small"
+                      v-model="applicationForm.stt_model_enable"
+                      @change="sttModelEnableChange"
+                    />
                   </div>
                 </template>
                 <el-select
-                  v-if="applicationForm.stt_model_enable"
+                  v-show="applicationForm.stt_model_enable"
                   v-model="applicationForm.stt_model_id"
                   class="w-full"
                   popper-class="select-model"
@@ -342,8 +349,8 @@
                     :label="relatedObject(providerOptions, label, 'provider')?.name"
                   >
                     <el-option
-                      v-for="item in value.filter((v: any) => v.status === 'SUCCESS')"
-                      :key="item.id"
+                      v-for="(item, index) in value?.filter((v: any) => v.status === 'SUCCESS')"
+                      :key="index"
                       :label="item.name"
                       :value="item.id"
                       class="flex-between"
@@ -361,14 +368,14 @@
                           >公用
                         </el-tag>
                       </div>
-                      <el-icon class="check-icon" v-if="item.id === applicationForm.stt_model_id">
+                      <el-icon class="check-icon" v-if="item?.id === applicationForm.stt_model_id">
                         <Check />
                       </el-icon>
                     </el-option>
                     <!-- 不可用 -->
                     <el-option
-                      v-for="item in value.filter((v: any) => v.status !== 'SUCCESS')"
-                      :key="item.id"
+                      v-for="(item, index) in value?.filter((v: any) => v.status !== 'SUCCESS')"
+                      :key="index"
                       :label="item.name"
                       :value="item.id"
                       class="flex-between"
@@ -384,7 +391,7 @@
                           $t('views.application.applicationForm.form.aiModel.unavailable')
                         }}</span>
                       </div>
-                      <el-icon class="check-icon" v-if="item.id === applicationForm.stt_model_id">
+                      <el-icon class="check-icon" v-if="item?.id === applicationForm.stt_model_id">
                         <Check />
                       </el-icon>
                     </el-option>
@@ -402,17 +409,23 @@
                         link
                         @click="openTTSParamSettingDialog"
                         :disabled="!applicationForm.tts_model_id"
+                        class="mr-8"
                       >
                         <el-icon class="mr-4"><Setting /></el-icon>
                         设置
                       </el-button>
-                      <el-switch size="small" v-model="applicationForm.tts_model_enable" />
+                      <el-switch
+                        size="small"
+                        v-model="applicationForm.tts_model_enable"
+                        @change="ttsModelEnableChange"
+                      />
                     </div>
                   </div>
                 </template>
                 <el-radio-group
                   v-model="applicationForm.tts_type"
-                  v-if="applicationForm.tts_model_enable"
+                  v-show="applicationForm.tts_model_enable"
+                  class="mb-8"
                 >
                   <el-radio value="BROWSER">浏览器播放(免费)</el-radio>
                   <el-radio value="TTS">TTS模型</el-radio>
@@ -422,6 +435,7 @@
                   v-model="applicationForm.tts_model_id"
                   class="w-full"
                   popper-class="select-model"
+                  @change="ttsModelChange()"
                   placeholder="请选择语音合成模型"
                 >
                   <el-option-group
@@ -526,7 +540,7 @@
             </h4>
           </div>
           <div class="scrollbar-height">
-            <AiChat :data="applicationForm"></AiChat>
+            <AiChat :applicationDetails="applicationForm" :type="'debug-ai-chat'"></AiChat>
           </div>
         </div>
       </el-col>
@@ -706,7 +720,11 @@ const openTTSParamSettingDialog = () => {
     MsgSuccess(t('请选择语音播放模型'))
     return
   }
-  TTSModeParamSettingDialogRef.value?.open(model_id, id, applicationForm.value.tts_model_params_setting)
+  TTSModeParamSettingDialogRef.value?.open(
+    model_id,
+    id,
+    applicationForm.value.tts_model_params_setting
+  )
 }
 
 const openParamSettingDialog = () => {
@@ -807,6 +825,27 @@ function getTTSModel() {
     })
 }
 
+function ttsModelChange() {
+  if (applicationForm.value.tts_model_id) {
+    TTSModeParamSettingDialogRef.value?.reset_default(applicationForm.value.tts_model_id, id)
+  } else {
+    refreshTTSForm({})
+  }
+}
+
+function ttsModelEnableChange() {
+  if (!applicationForm.value.tts_model_enable) {
+    applicationForm.value.tts_model_id = ''
+    applicationForm.value.tts_type = 'BROWSER'
+  }
+}
+
+function sttModelEnableChange() {
+  if (!applicationForm.value.stt_model_enable) {
+    applicationForm.value.stt_model_id = ''
+  }
+}
+
 function getProvider() {
   loading.value = true
   model
@@ -858,7 +897,7 @@ onMounted(() => {
   }
 
   .scrollbar-height {
-    height: calc(var(--app-main-height) - 160px);
+    height: calc(var(--app-main-height) - 166px);
   }
 }
 

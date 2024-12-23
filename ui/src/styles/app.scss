@@ -211,6 +211,9 @@ h5 {
 .p-8-12 {
   padding: calc(var(--app-base-px)) calc(var(--app-base-px) + 4px);
 }
+.p-12-16 {
+  padding: calc(var(--app-base-px) + 4px) calc(var(--app-base-px) * 2);
+}
 .p-12-24 {
   padding: calc(var(--app-base-px) + 4px) calc(var(--app-base-px) * 3);
 }
@@ -275,6 +278,10 @@ h5 {
 
 .vertical-middle {
   vertical-align: middle;
+}
+
+.line-height-22 {
+  line-height: 22px;
 }
 
 .border {
@@ -594,7 +601,7 @@ h5 {
 .card__radio {
   width: 100%;
   display: block;
-
+  line-height: 22px;
   .el-radio {
     white-space: break-spaces;
     width: 100%;
@@ -741,4 +748,9 @@ h5 {
 
 .record-tip-confirm {
   max-width: 800px !important;
+}
+
+//企业微信
+.wwLogin_qrcode_head {
+  padding: 20px 0 !important;
 }

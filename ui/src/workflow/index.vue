@@ -5,13 +5,14 @@
 </template>
 <script setup lang="ts">
 import LogicFlow from '@logicflow/core'
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick } from 'vue'
 import AppEdge from './common/edge'
 import Control from './common/NodeControl.vue'
 import { baseNodes } from '@/workflow/common/data'
 import '@logicflow/extension/lib/style/index.css'
 import '@logicflow/core/dist/style/index.css'
 import { initDefaultShortcut } from '@/workflow/common/shortcut'
+import Dagre from '@/workflow/plugins/dagre'
 const nodes: any = import.meta.glob('./nodes/**/index.ts', { eager: true })
 
 defineOptions({ name: 'WorkFlow' })
@@ -49,9 +50,19 @@ const graphData = computed({
 
 const lf = ref()
 onMounted(() => {
+  renderGraphData()
+})
+const render = (data: any) => {
+  lf.value.render(data)
+}
+const renderGraphData = (data?: any) => {
+  if (data) {
+    graphData.value = data
+  }
   const container: any = document.querySelector('#container')
   if (container) {
     lf.value = new LogicFlow({
+      plugins: [Dagre],
       textEdit: false,
       adjustEdge: false,
       adjustEdgeStartAndEnd: false,
@@ -94,7 +105,7 @@ onMounted(() => {
       lf.value?.fitView()
     }, 500)
   }
-})
+}
 const validate = () => {
   return Promise.all(lf.value.graphModel.nodes.map((element: any) => element?.validate?.()))
 }
@@ -129,7 +140,7 @@ const addNode = (shapeItem: ShapeItem) => {
 }
 
 const clearGraphData = () => {
-  return lf.value.graphModel.clearData()
+  return lf.value.clearData()
 }
 
 defineExpose({
@@ -137,7 +148,9 @@ defineExpose({
   validate,
   getGraphData,
   addNode,
-  clearGraphData
+  clearGraphData,
+  renderGraphData,
+  render
 })
 </script>
 <style lang="scss">

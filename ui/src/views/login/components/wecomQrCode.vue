@@ -1,5 +1,5 @@
 <template>
-  <div id="wecom-qr" class="wecom-qr"></div>
+  <div id="wecom-qr" class="wecom-qr" style="margin-left: 50px"></div>
 </template>
 
 <script lang="ts" setup>
@@ -46,7 +46,6 @@ const init = async () => {
       },
       onCheckWeComLogin: obj.value,
       async onLoginSuccess({ code }: any) {
-        console.log('Login success:', code)
         user.wecomCallback(code).then(() => {
           setTimeout(() => {
             router.push({ name: 'home' })
@@ -54,7 +53,7 @@ const init = async () => {
         })
       },
       onLoginFail(err) {
-        MsgError(`errorMsg of errorCbk: ${err.errMsg}`)
+        MsgError(`${err.errMsg}`)
       }
     })
   } catch (error) {
@@ -65,4 +64,9 @@ const init = async () => {
 init()
 </script>
 
-<style scoped lang="scss"></style>
+<style scoped lang="scss">
+.wecom-qr {
+  margin-top: -20px;
+  height: 331px;
+}
+</style>

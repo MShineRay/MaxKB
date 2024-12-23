@@ -6,15 +6,19 @@
     @date：2023/9/21 16:14
     @desc:
 """
+import io
 import logging
 import os.path
 import re
 import traceback
 import uuid
+import zipfile
 from functools import reduce
+from tempfile import TemporaryDirectory
 from typing import Dict, List
 from urllib.parse import urlparse
 
+from celery_once import AlreadyQueued
 from django.contrib.postgres.fields import ArrayField
 from django.core import validators
 from django.db import transaction, models
@@ -27,18 +31,20 @@ from application.models import ApplicationDatasetMapping
 from common.config.embedding_config import VectorStore
 from common.db.search import get_dynamics_model, native_page_search, native_search
 from common.db.sql_execute import select_list
+from common.event import ListenerManagement
 from common.exception.app_exception import AppApiException
 from common.mixins.api_mixin import ApiMixin
-from common.util.common import post, flat_map, valid_license
+from common.util.common import post, flat_map, valid_license, parse_image
 from common.util.field_message import ErrMessage
 from common.util.file_util import get_file_content
 from common.util.fork import ChildLink, Fork
 from common.util.split_model import get_split_model
-from dataset.models.data_set import DataSet, Document, Paragraph, Problem, Type, ProblemParagraphMapping, Status
+from dataset.models.data_set import DataSet, Document, Paragraph, Problem, Type, ProblemParagraphMapping, TaskType, \
+    State, File, Image
 from dataset.serializers.common_serializers import list_paragraph, MetaSerializer, ProblemParagraphManage, \
-    get_embedding_model_by_dataset_id, get_embedding_model_id_by_dataset_id
+    get_embedding_model_by_dataset_id, get_embedding_model_id_by_dataset_id, write_image, zip_dir
 from dataset.serializers.document_serializers import DocumentSerializers, DocumentInstanceSerializer
-from dataset.task import sync_web_dataset
+from dataset.task import sync_web_dataset, sync_replace_web_dataset
 from embedding.models import SearchMode
 from embedding.task import embedding_by_dataset, delete_embedding_by_dataset
 from setting.models import AuthOperate
@@ -129,18 +135,22 @@ class DataSetSerializers(serializers.ModelSerializer):
                                      )
 
         user_id = serializers.CharField(required=True)
+        select_user_id = serializers.CharField(required=False)
 
         def get_query_set(self):
             user_id = self.data.get("user_id")
             query_set_dict = {}
             query_set = QuerySet(model=get_dynamics_model(
                 {'temp.name': models.CharField(), 'temp.desc': models.CharField(),
-                 "document_temp.char_length": models.IntegerField(), 'temp.create_time': models.DateTimeField()}))
+                 "document_temp.char_length": models.IntegerField(), 'temp.create_time': models.DateTimeField(),
+                 'temp.user_id': models.CharField(), 'temp.id': models.CharField()}))
             if "desc" in self.data and self.data.get('desc') is not None:
                 query_set = query_set.filter(**{'temp.desc__icontains': self.data.get("desc")})
             if "name" in self.data and self.data.get('name') is not None:
                 query_set = query_set.filter(**{'temp.name__icontains': self.data.get("name")})
-            query_set = query_set.order_by("-temp.create_time")
+            if "select_user_id" in self.data and self.data.get('select_user_id') is not None:
+                query_set = query_set.filter(**{'temp.user_id__exact': self.data.get("select_user_id")})
+            query_set = query_set.order_by("-temp.create_time", "temp.id")
             query_set_dict['default_sql'] = query_set
 
             query_set_dict['dataset_custom_sql'] = QuerySet(model=get_dynamics_model(
@@ -602,7 +612,9 @@ class DataSetSerializers(serializers.ModelSerializer):
                         document_name = child_link.tag.text if child_link.tag is not None and len(
                             child_link.tag.text.strip()) > 0 else child_link.url
                         paragraphs = get_split_model('web.md').parse(response.content)
-                        first = QuerySet(Document).filter(meta__source_url=child_link.url, dataset=dataset).first()
+                        print(child_link.url.strip())
+                        first = QuerySet(Document).filter(meta__source_url=child_link.url.strip(),
+                                                          dataset=dataset).first()
                         if first is not None:
                             # 如果存在,使用文档同步
                             DocumentSerializers.Sync(data={'document_id': first.id}).sync()
@@ -610,7 +622,8 @@ class DataSetSerializers(serializers.ModelSerializer):
                             # 插入
                             DocumentSerializers.Create(data={'dataset_id': dataset.id}).save(
                                 {'name': document_name, 'paragraphs': paragraphs,
-                                 'meta': {'source_url': child_link.url, 'selector': dataset.meta.get('selector')},
+                                 'meta': {'source_url': child_link.url.strip(),
+                                          'selector': dataset.meta.get('selector')},
                                  'type': Type.web}, with_valid=True)
                     except Exception as e:
                         logging.getLogger("max_kb_error").error(f'{str(e)}:{traceback.format_exc()}')
@@ -624,7 +637,7 @@ class DataSetSerializers(serializers.ModelSerializer):
             """
             url = dataset.meta.get('source_url')
             selector = dataset.meta.get('selector') if 'selector' in dataset.meta else None
-            sync_web_dataset.delay(str(dataset.id), url, selector)
+            sync_replace_web_dataset.delay(str(dataset.id), url, selector)
 
         def complete_sync(self, dataset):
             """
@@ -685,6 +698,33 @@ class DataSetSerializers(serializers.ModelSerializer):
             workbook.save(response)
             return response
 
+        def export_zip(self, with_valid=True):
+            if with_valid:
+                self.is_valid(raise_exception=True)
+            document_list = QuerySet(Document).filter(dataset_id=self.data.get('id'))
+            paragraph_list = native_search(QuerySet(Paragraph).filter(dataset_id=self.data.get("id")), get_file_content(
+                os.path.join(PROJECT_DIR, "apps", "dataset", 'sql', 'list_paragraph_document_name.sql')))
+            problem_mapping_list = native_search(
+                QuerySet(ProblemParagraphMapping).filter(dataset_id=self.data.get("id")), get_file_content(
+                    os.path.join(PROJECT_DIR, "apps", "dataset", 'sql', 'list_problem_mapping.sql')),
+                with_table_name=True)
+            data_dict, document_dict = DocumentSerializers.Operate.merge_problem(paragraph_list, problem_mapping_list,
+                                                                                 document_list)
+            res = [parse_image(paragraph.get('content')) for paragraph in paragraph_list]
+
+            workbook = DocumentSerializers.Operate.get_workbook(data_dict, document_dict)
+            response = HttpResponse(content_type='application/zip')
+            response['Content-Disposition'] = 'attachment; filename="archive.zip"'
+            zip_buffer = io.BytesIO()
+            with TemporaryDirectory() as tempdir:
+                dataset_file = os.path.join(tempdir, 'dataset.xlsx')
+                workbook.save(dataset_file)
+                for r in res:
+                    write_image(tempdir, r)
+                zip_dir(tempdir, zip_buffer)
+            response.write(zip_buffer.getvalue())
+            return response
+
         @staticmethod
         def merge_problem(paragraph_list: List[Dict], problem_mapping_list: List[Dict]):
             result = {}
@@ -723,14 +763,22 @@ class DataSetSerializers(serializers.ModelSerializer):
             delete_embedding_by_dataset(self.data.get('id'))
             return True
 
+        @transaction.atomic
         def re_embedding(self, with_valid=True):
             if with_valid:
                 self.is_valid(raise_exception=True)
-
-            QuerySet(Document).filter(dataset_id=self.data.get('id')).update(**{'status': Status.queue_up})
-            QuerySet(Paragraph).filter(dataset_id=self.data.get('id')).update(**{'status': Status.queue_up})
+            ListenerManagement.update_status(QuerySet(Document).filter(dataset_id=self.data.get('id')),
+                                             TaskType.EMBEDDING,
+                                             State.PENDING)
+            ListenerManagement.update_status(QuerySet(Paragraph).filter(dataset_id=self.data.get('id')),
+                                             TaskType.EMBEDDING,
+                                             State.PENDING)
+            ListenerManagement.get_aggregation_document_status_by_dataset_id(self.data.get('id'))()
             embedding_model_id = get_embedding_model_id_by_dataset_id(self.data.get('id'))
-            embedding_by_dataset.delay(self.data.get('id'), embedding_model_id)
+            try:
+                embedding_by_dataset.delay(self.data.get('id'), embedding_model_id)
+            except AlreadyQueued as e:
+                raise AppApiException(500, "向量化任务发送失败，请稍后再试！")
 
         def list_application(self, with_valid=True):
             if with_valid:

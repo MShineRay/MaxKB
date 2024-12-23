@@ -8,11 +8,12 @@ const datasetRouter = {
   children: [
     {
       path: '/dataset',
-      name: 'dataset',
+      name: 'dataset-index',
+      meta: { title: '知识库主页', activeMenu: '/dataset' },
       component: () => import('@/views/dataset/index.vue')
     },
     {
-      path: '/dataset/:type', // create 或者 upload
+      path: '/dataset/:type', // upload
       name: 'UploadDocumentDataset',
       meta: { activeMenu: '/dataset' },
       component: () => import('@/views/dataset/UploadDocumentDataset.vue'),

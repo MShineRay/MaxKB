@@ -72,3 +72,42 @@ class XlsxSplitHandle(BaseParseTableHandle):
             max_kb.error(f'excel split handle error: {e}')
             return [{'name': file.name, 'paragraphs': []}]
         return result
+
+
+    def get_content(self, file, save_image):
+        try:
+            # 加载 Excel 文件
+            workbook = load_workbook(file)
+            try:
+                image_dict: dict = xlsx_embed_cells_images(file)
+                if len(image_dict) > 0:
+                    save_image(image_dict.values())
+            except Exception as e:
+                print(f'{e}')
+                image_dict = {}
+            md_tables = ''
+            # 如果未指定 sheet_name，则使用第一个工作表
+            for sheetname in workbook.sheetnames:
+                sheet = workbook[sheetname] if sheetname else workbook.active
+                rows = self.fill_merged_cells(sheet, image_dict)
+                if len(rows) == 0:
+                    continue
+                # 提取表头和内容
+
+                headers = [f"{key}" for key, value in rows[0].items()]
+
+                # 构建 Markdown 表格
+                md_table = '| ' + ' | '.join(headers) + ' |\n'
+                md_table += '| ' + ' | '.join(['---'] * len(headers)) + ' |\n'
+                for row in rows:
+                    r = [f'{value}' for key, value in row.items()]
+                    md_table += '| ' + ' | '.join(
+                        [str(cell).replace('\n', '<br>') if cell is not None else '' for cell in r]) + ' |\n'
+
+                md_tables += md_table + '\n\n'
+
+                md_tables = md_tables.replace('/api/image/', '/api/file/')
+            return md_tables
+        except Exception as e:
+            max_kb.error(f'excel split handle error: {e}')
+            return f'error: {e}'

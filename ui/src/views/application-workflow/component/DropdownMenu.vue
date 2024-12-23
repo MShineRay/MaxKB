@@ -1,7 +1,7 @@
 <template>
   <div v-show="show" class="workflow-dropdown-menu border border-r-4">
     <el-tabs v-model="activeName" class="workflow-dropdown-tabs">
-      <div style="display: flex; width: 100%; justify-content: center">
+      <div style="display: flex; width: 100%; justify-content: center" class="mb-4">
         <el-input v-model="search_text" style="width: 240px" placeholder="按名称搜索">
           <template #suffix>
             <el-icon class="el-input__icon"><search /></el-icon>
@@ -11,19 +11,24 @@
 
       <el-tab-pane label="基础组件" name="base">
         <el-scrollbar height="400">
-          <template v-for="(item, index) in filter_menu_nodes" :key="index">
-            <div
-              class="workflow-dropdown-item cursor flex p-8-12"
-              @click.stop="clickNodes(item)"
-              @mousedown.stop="onmousedown(item)"
-            >
-              <component :is="iconComponent(`${item.type}-icon`)" class="mr-8 mt-4" :size="32" />
-              <div class="pre-wrap">
-                <div class="lighter">{{ item.label }}</div>
-                <el-text type="info" size="small">{{ item.text }}</el-text>
+          <div v-if="filter_menu_nodes.length > 0">
+            <template v-for="(item, index) in filter_menu_nodes" :key="index">
+              <div
+                class="workflow-dropdown-item cursor flex p-8-12"
+                @click.stop="clickNodes(item)"
+                @mousedown.stop="onmousedown(item)"
+              >
+                <component :is="iconComponent(`${item.type}-icon`)" class="mr-8 mt-4" :size="32" />
+                <div class="pre-wrap">
+                  <div class="lighter">{{ item.label }}</div>
+                  <el-text type="info" size="small">{{ item.text }}</el-text>
+                </div>
               </div>
-            </div>
-          </template>
+            </template>
+          </div>
+          <div v-else class="ml-16 mt-8">
+            <el-text type="info">没有找到相关结果</el-text>
+          </div>
         </el-scrollbar>
       </el-tab-pane>
       <el-tab-pane label="函数库" name="function">
@@ -43,7 +48,7 @@
           <template v-for="(item, index) in filter_function_lib_list" :key="index">
             <div
               class="workflow-dropdown-item cursor flex p-8-12"
-              @click.stop="clickNodes(functionLibNode, item)"
+              @click.stop="clickNodes(functionLibNode, item, 'function')"
               @mousedown.stop="onmousedown(functionLibNode, item)"
             >
               <component
@@ -59,14 +64,50 @@
           </template>
         </el-scrollbar>
       </el-tab-pane>
+      <el-tab-pane label="应用" name="application">
+        <el-scrollbar height="400">
+          <div v-if="filter_application_list.length > 0">
+            <template v-for="(item, index) in filter_application_list" :key="index">
+              <div
+                class="workflow-dropdown-item cursor flex p-8-12"
+                @click.stop="clickNodes(applicationNode, item, 'application')"
+                @mousedown.stop="onmousedown(applicationNode, item, 'application')"
+              >
+                <component
+                  :is="iconComponent(`application-node-icon`)"
+                  class="mr-8 mt-4"
+                  :size="32"
+                  :item="item"
+                />
+                <div class="pre-wrap" style="width: 60%">
+                  <div class="lighter ellipsis" :title="item.name">
+                    {{ item.name }}
+                  </div>
+                  <el-text type="info" size="small" style="width: 80%">{{ item.desc }}</el-text>
+                </div>
+                <div class="status-tag" style="margin-left: auto">
+                  <el-tag type="warning" v-if="isWorkFlow(item.type)" style="height: 22px"
+                    >高级编排</el-tag
+                  >
+                  <el-tag class="blue-tag" v-else style="height: 22px">简单配置</el-tag>
+                </div>
+              </div>
+            </template>
+          </div>
+          <div v-else class="ml-16 mt-8">
+            <el-text type="info">没有找到相关结果</el-text>
+          </div>
+        </el-scrollbar>
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { menuNodes, functionLibNode, functionNode } from '@/workflow/common/data'
+import { menuNodes, functionLibNode, functionNode, applicationNode } from '@/workflow/common/data'
 import { iconComponent } from '@/workflow/icons/utils'
 import applicationApi from '@/api/application'
+import { isWorkFlow } from '@/utils/application'
 const search_text = ref<string>('')
 const props = defineProps({
   show: {
@@ -91,21 +132,56 @@ const filter_function_lib_list = computed(() => {
     item.name.toLocaleLowerCase().includes(search_text.value.toLocaleLowerCase())
   )
 })
+const applicationList = ref<any[]>([])
+const filter_application_list = computed(() => {
+  return applicationList.value.filter((item: any) =>
+    item.name.toLocaleLowerCase().includes(search_text.value.toLocaleLowerCase())
+  )
+})
+
 const filter_menu_nodes = computed(() => {
   return menuNodes.filter((item) =>
     item.label.toLocaleLowerCase().includes(search_text.value.toLocaleLowerCase())
   )
 })
-function clickNodes(item: any, data?: any) {
+function clickNodes(item: any, data?: any, type?: string) {
   if (data) {
     item['properties']['stepName'] = data.name
-    item['properties']['node_data'] = {
-      ...data,
-      function_lib_id: data.id,
-      input_field_list: data.input_field_list.map((field: any) => ({
-        ...field,
-        value: field.source == 'reference' ? [] : ''
-      }))
+    if (type == 'function') {
+      item['properties']['node_data'] = {
+        ...data,
+        function_lib_id: data.id,
+        input_field_list: data.input_field_list.map((field: any) => ({
+          ...field,
+          value: field.source == 'reference' ? [] : ''
+        }))
+      }
+    }
+    if (type == 'application') {
+      if (isWorkFlow(data.type)) {
+        const nodeData = data.work_flow.nodes[0].properties.node_data
+        const fileUploadSetting = nodeData.file_upload_setting
+        item['properties']['node_data'] = {
+          name: data.name,
+          icon: data.icon,
+          application_id: data.id,
+          api_input_field_list: data.work_flow.nodes[0].properties.api_input_field_list,
+          user_input_field_list: data.work_flow.nodes[0].properties.user_input_field_list,
+          ...(!fileUploadSetting
+            ? {}
+            : {
+                ...(fileUploadSetting.document ? { document_list: [] } : {}),
+                ...(fileUploadSetting.image ? { image_list: [] } : {}),
+                ...(fileUploadSetting.audio ? { audio_list: [] } : {})
+              })
+        }
+      } else {
+        item['properties']['node_data'] = {
+          name: data.name,
+          icon: data.icon,
+          application_id: data.id
+        }
+      }
     }
   }
   props.workflowRef?.addNode(item)
@@ -113,16 +189,44 @@ function clickNodes(item: any, data?: any) {
   emit('clickNodes', item)
 }
 
-function onmousedown(item: any, data?: any) {
+function onmousedown(item: any, data?: any, type?: string) {
   if (data) {
     item['properties']['stepName'] = data.name
-    item['properties']['node_data'] = {
-      ...data,
-      function_lib_id: data.id,
-      input_field_list: data.input_field_list.map((field: any) => ({
-        ...field,
-        value: field.source == 'reference' ? [] : ''
-      }))
+    if (type == 'function') {
+      item['properties']['node_data'] = {
+        ...data,
+        function_lib_id: data.id,
+        input_field_list: data.input_field_list.map((field: any) => ({
+          ...field,
+          value: field.source == 'reference' ? [] : ''
+        }))
+      }
+    }
+    if (type == 'application') {
+      if (isWorkFlow(data.type)) {
+        const nodeData = data.work_flow.nodes[0].properties.node_data
+        const fileUploadSetting = nodeData.file_upload_setting
+        item['properties']['node_data'] = {
+          name: data.name,
+          icon: data.icon,
+          application_id: data.id,
+          api_input_field_list: data.work_flow.nodes[0].properties.api_input_field_list,
+          user_input_field_list: data.work_flow.nodes[0].properties.user_input_field_list,
+          ...(!fileUploadSetting
+            ? {}
+            : {
+                ...(fileUploadSetting.document ? { document_list: [] } : {}),
+                ...(fileUploadSetting.image ? { image_list: [] } : {}),
+                ...(fileUploadSetting.audio ? { audio_list: [] } : {})
+              })
+        }
+      } else {
+        item['properties']['node_data'] = {
+          name: data.name,
+          icon: data.icon,
+          application_id: data.id
+        }
+      }
     }
   }
   props.workflowRef?.onmousedown(item)
@@ -132,6 +236,9 @@ function onmousedown(item: any, data?: any) {
 function getList() {
   applicationApi.listFunctionLib(props.id, loading).then((res: any) => {
     functionLibList.value = res.data
+  })
+  applicationApi.getApplicationList(props.id, loading).then((res: any) => {
+    applicationList.value = res.data
   })
 }
 

@@ -2,7 +2,10 @@
   <div
     class="chat-embed layout-bg"
     v-loading="loading"
-    :style="{ '--el-color-primary': applicationDetail?.custom_theme?.theme_color }"
+    :style="{
+      '--el-color-primary': applicationDetail?.custom_theme?.theme_color,
+      '--el-color-primary-light-9': hexToRgba(applicationDetail?.custom_theme?.theme_color, 0.1)
+    }"
   >
     <div class="chat-embed__header" :style="customStyle">
       <div class="chat-width flex align-center">
@@ -31,11 +34,12 @@
       <div class="chat-embed__main">
         <AiChat
           ref="AiChatRef"
-          v-model:data="applicationDetail"
+          v-model:applicationDetails="applicationDetail"
           :available="applicationAvailable"
           :appId="applicationDetail?.id"
           :record="currentRecordList"
           :chatId="currentChatId"
+          type="ai-chat"
           @refresh="refresh"
           @scroll="handleScroll"
           class="AiChat-embed"
@@ -73,6 +77,7 @@
           <el-scrollbar max-height="300">
             <div class="p-8">
               <common-list
+                :style="{ '--el-color-primary': applicationDetail?.custom_theme?.theme_color }"
                 :data="chatLogData"
                 v-loading="left_loading"
                 :defaultActive="currentChatId"
@@ -111,8 +116,8 @@
 </template>
 <script setup lang="ts">
 import { ref, onMounted, reactive, nextTick, computed } from 'vue'
-
 import { isAppIcon } from '@/utils/application'
+import { hexToRgba } from '@/utils/theme'
 import useStore from '@/stores'
 
 const { user, log } = useStore()
@@ -252,6 +257,7 @@ const init = () => {
     getChatLog(applicationDetail.value.id)
   }
 }
+
 onMounted(() => {
   init()
 })

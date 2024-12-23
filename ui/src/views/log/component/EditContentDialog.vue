@@ -85,6 +85,7 @@
           filterable
           placeholder="请选择文档"
           :loading="optionLoading"
+          @change="changeDocument"
         >
           <el-option
             v-for="item in documentList"
@@ -113,7 +114,7 @@ import logApi from '@/api/log'
 import imageApi from '@/api/image'
 import useStore from '@/stores'
 
-const { application, document } = useStore()
+const { application, document, user } = useStore()
 
 const route = useRoute()
 const {
@@ -215,20 +216,40 @@ const onUploadImg = async (files: any, callback: any) => {
   callback(res.map((item) => item.data))
 }
 
-function changeDataset(id: string) {
+function changeDataset(dataset_id: string) {
+  localStorage.setItem(id + 'chat_dataset_id', dataset_id)
   form.value.document_id = ''
-  getDocument(id)
+  getDocument(dataset_id)
 }
 
-function getDocument(id: string) {
-  document.asyncGetAllDocument(id, loading).then((res: any) => {
+function changeDocument(document_id: string) {
+  localStorage.setItem(id + 'chat_document_id', document_id)
+}
+
+function getDocument(dataset_id: string) {
+  document.asyncGetAllDocument(dataset_id, loading).then((res: any) => {
     documentList.value = res.data
+    if (localStorage.getItem(id + 'chat_document_id')) {
+      form.value.document_id = localStorage.getItem(id + 'chat_document_id') as string
+    }
+    if (!documentList.value.find((v) => v.id === form.value.document_id)) {
+      form.value.document_id = ''
+    }
   })
 }
 
 function getDataset() {
   application.asyncGetApplicationDataset(id, loading).then((res: any) => {
     datasetList.value = res.data
+    if (localStorage.getItem(id + 'chat_dataset_id')) {
+      form.value.dataset_id = localStorage.getItem(id + 'chat_dataset_id') as string
+      if (!datasetList.value.find((v) => v.id === form.value.dataset_id)) {
+        form.value.dataset_id = ''
+        form.value.document_id = ''
+      } else {
+        getDocument(form.value.dataset_id)
+      }
+    }
   })
 }
 

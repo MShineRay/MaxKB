@@ -2,14 +2,30 @@
   <div class="dataset-list-container p-24" style="padding-top: 16px">
     <div class="flex-between mb-16">
       <h4>知识库</h4>
-      <el-input
-        v-model="searchValue"
-        @change="searchHandle"
-        placeholder="按名称搜索"
-        prefix-icon="Search"
-        class="w-240"
-        clearable
-      />
+      <div class="flex-between">
+        <el-select
+          v-model="selectUserId"
+          class="mr-12"
+          @change="searchHandle"
+          style="max-width: 240px; width: 150px"
+        >
+          <el-option
+            v-for="item in userOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
+        </el-select>
+        <el-input
+          v-model="searchValue"
+          @change="searchHandle"
+          :placeholder="$t('views.application.applicationList.searchBar.placeholder')"
+          prefix-icon="Search"
+          class="w-240"
+          style="max-width: 240px"
+          clearable
+        />
+      </div>
     </div>
     <div v-loading.fullscreen.lock="paginationConfig.current_page === 1 && loading">
       <InfiniteScroll
@@ -21,11 +37,11 @@
         :loading="loading"
       >
         <el-row :gutter="15">
-          <el-col :xs="24" :sm="12" :md="8" :lg="6" :xl="4" class="mb-16">
+          <el-col :xs="24" :sm="12" :md="8" :lg="6" :xl="6" class="mb-16">
             <CardAdd title="创建知识库" @click="openCreateDialog" />
           </el-col>
           <template v-for="(item, index) in datasetList" :key="index">
-            <el-col :xs="24" :sm="12" :md="8" :lg="6" :xl="4" class="mb-16">
+            <el-col :xs="24" :sm="12" :md="8" :lg="6" :xl="6" class="mb-16">
               <CardBox
                 :title="item.name"
                 :description="item.desc"
@@ -45,9 +61,22 @@
                     <img src="@/assets/icon_document.svg" style="width: 58%" alt="" />
                   </AppAvatar>
                 </template>
+                <template #subTitle>
+                  <el-text class="color-secondary" size="small">
+                    <auto-tooltip :content="item.username">
+                      创建者: {{ item.username }}
+                    </auto-tooltip>
+                  </el-text>
+                </template>
                 <div class="delete-button">
-                  <el-tag class="blue-tag" v-if="item.type === '0'">通用型</el-tag>
-                  <el-tag class="purple-tag" v-else-if="item.type === '1'" type="warning"
+                  <el-tag class="blue-tag" v-if="item.type === '0'" style="height: 22px"
+                    >通用型</el-tag
+                  >
+                  <el-tag
+                    class="purple-tag"
+                    v-else-if="item.type === '1'"
+                    type="warning"
+                    style="height: 22px"
                     >Web 站点</el-tag
                   >
                 </div>
@@ -80,7 +109,7 @@
                                 iconName="app-document-refresh"
                                 style="font-size: 16px"
                               ></AppIcon>
-                              重新向量化</el-dropdown-item
+                              向量化</el-dropdown-item
                             >
                             <el-dropdown-item
                               icon="Setting"
@@ -89,7 +118,10 @@
                               设置</el-dropdown-item
                             >
                             <el-dropdown-item @click.stop="export_dataset(item)">
-                              <AppIcon iconName="app-export"></AppIcon>导出</el-dropdown-item
+                              <AppIcon iconName="app-export"></AppIcon>导出Excel</el-dropdown-item
+                            >
+                            <el-dropdown-item @click.stop="export_zip_dataset(item)">
+                              <AppIcon iconName="app-export"></AppIcon>导出ZIP</el-dropdown-item
                             >
                             <el-dropdown-item icon="Delete" @click.stop="deleteDataset(item)"
                               >删除</el-dropdown-item
@@ -120,6 +152,7 @@ import { useRouter } from 'vue-router'
 import { numberFormat } from '@/utils/utils'
 import { ValidType, ValidCount } from '@/enums/common'
 import useStore from '@/stores'
+import applicationApi from '@/api/application'
 
 const { user, common } = useStore()
 const router = useRouter()
@@ -130,11 +163,20 @@ const loading = ref(false)
 const datasetList = ref<any[]>([])
 const paginationConfig = reactive({
   current_page: 1,
-  page_size: 20,
+  page_size: 30,
   total: 0
 })
 
 const searchValue = ref('')
+
+interface UserOption {
+  label: string
+  value: string
+}
+
+const userOptions = ref<UserOption[]>([])
+
+const selectUserId = ref('all')
 
 function openCreateDialog() {
   if (user.isEnterprise()) {
@@ -174,12 +216,20 @@ function syncDataset(row: any) {
 }
 
 function searchHandle() {
+  if (user.userInfo) {
+    localStorage.setItem(user.userInfo.id + 'dataset', selectUserId.value)
+  }
   paginationConfig.current_page = 1
   datasetList.value = []
   getList()
 }
 const export_dataset = (item: any) => {
   datasetApi.exportDataset(item.name, item.id, loading).then((ok) => {
+    MsgSuccess('导出成功')
+  })
+}
+const export_zip_dataset = (item: any) => {
+  datasetApi.exportZipDataset(item.name, item.id, loading).then((ok) => {
     MsgSuccess('导出成功')
   })
 }
@@ -204,16 +254,46 @@ function deleteDataset(row: any) {
 }
 
 function getList() {
-  datasetApi
-    .getDataset(paginationConfig, searchValue.value && { name: searchValue.value }, loading)
-    .then((res) => {
-      paginationConfig.total = res.data.total
-      datasetList.value = [...datasetList.value, ...res.data.records]
+  const params = {
+    ...(searchValue.value && { name: searchValue.value }),
+    ...(selectUserId.value &&
+      selectUserId.value !== 'all' && { select_user_id: selectUserId.value })
+  }
+  datasetApi.getDataset(paginationConfig, params, loading).then((res) => {
+    res.data.records.forEach((item: any) => {
+      if (user.userInfo && item.user_id === user.userInfo.id) {
+        item.username = user.userInfo.username
+      } else {
+        item.username = userOptions.value.find((v) => v.value === item.user_id)?.label
+      }
     })
+    paginationConfig.total = res.data.total
+    datasetList.value = [...datasetList.value, ...res.data.records]
+  })
+}
+
+function getUserList() {
+  applicationApi.getUserList('DATASET', loading).then((res) => {
+    if (res.data) {
+      userOptions.value = res.data.map((item: any) => {
+        return {
+          label: item.username,
+          value: item.id
+        }
+      })
+      if (user.userInfo) {
+        const selectUserIdValue = localStorage.getItem(user.userInfo.id + 'dataset')
+        if (selectUserIdValue && userOptions.value.find((v) => v.value === selectUserIdValue)) {
+          selectUserId.value = selectUserIdValue
+        }
+      }
+      getList()
+    }
+  })
 }
 
 onMounted(() => {
-  getList()
+  getUserList()
 })
 </script>
 <style lang="scss" scoped>
@@ -221,7 +301,7 @@ onMounted(() => {
   .delete-button {
     position: absolute;
     right: 12px;
-    top: 13px;
+    top: 15px;
     height: auto;
   }
   .footer-content {

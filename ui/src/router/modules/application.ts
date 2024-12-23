@@ -9,15 +9,9 @@ const applicationRouter = {
   children: [
     {
       path: '/application',
-      name: 'application',
+      name: 'application-index',
+      meta: { title: '应用主页', activeMenu: '/application' },
       component: () => import('@/views/application/index.vue')
-    },
-    {
-      path: '/application/create',
-      name: 'CreateApplication',
-      meta: { activeMenu: '/application' },
-      component: () => import('@/views/application/CreateAndSetting.vue'),
-      hidden: true
     },
     {
       path: '/application/:id/:type',

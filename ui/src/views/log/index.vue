@@ -30,15 +30,18 @@
           clearable
         />
         <div style="display: flex; align-items: center" class="float-right">
-          <el-button @click="dialogVisible = true" type="primary">清除策略</el-button>
+          <el-button @click="dialogVisible = true">清除策略</el-button>
           <el-button @click="exportLog">导出</el-button>
+          <el-button @click="openDocumentDialog" :disabled="multipleSelection.length === 0"
+            >添加至知识库
+          </el-button>
         </div>
       </div>
 
       <app-table
         :data="tableData"
         :pagination-config="paginationConfig"
-        @sizeChange="handleSizeChange"
+        @sizeChange="getList"
         @changePage="getList"
         @row-click="rowClickHandle"
         v-loading="loading"
@@ -120,9 +123,9 @@
           </template>
         </el-table-column>
         <el-table-column prop="mark_sum" label="改进标注" align="right" />
-        <el-table-column label="时间" width="180">
+        <el-table-column label="最近对话时间" width="180">
           <template #default="{ row }">
-            {{ datetimeFormat(row.create_time) }}
+            {{ datetimeFormat(row.update_time) }}
           </template>
         </el-table-column>
 
@@ -159,20 +162,102 @@
       <el-input-number
         v-model="days"
         controls-position="right"
-        min="1"
-        max="100000"
+        :min="1"
+        :max="100000"
+        :value-on-clear="0"
+        step-strictly
         style="width: 110px; margin-left: 8px; margin-right: 8px"
       ></el-input-number>
       <span>天之前的对话记录</span>
       <template #footer>
         <div class="dialog-footer" style="margin-top: 16px">
-          <el-button @click="dialogVisible = false">{{
-            $t('layout.topbar.avatar.dialog.cancel')
-          }}</el-button>
+          <el-button @click="dialogVisible = false"
+            >{{ $t('layout.topbar.avatar.dialog.cancel') }}
+          </el-button>
           <el-button type="primary" @click="saveCleanTime">
             {{ $t('layout.topbar.avatar.dialog.save') }}
           </el-button>
         </div>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      title="添加至知识库"
+      v-model="documentDialogVisible"
+      width="50%"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+    >
+      <el-form
+        ref="formRef"
+        :model="form"
+        label-position="top"
+        require-asterisk-position="right"
+        :rules="rules"
+        @submit.prevent
+      >
+        <el-form-item label="选择知识库" prop="dataset_id">
+          <el-select
+            v-model="form.dataset_id"
+            filterable
+            placeholder="请选择知识库"
+            :loading="optionLoading"
+            @change="changeDataset"
+          >
+            <el-option
+              v-for="item in datasetList"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            >
+              <span class="flex align-center">
+                <AppAvatar
+                  v-if="!item.dataset_id && item.type === '1'"
+                  class="mr-12 avatar-purple"
+                  shape="square"
+                  :size="24"
+                >
+                  <img src="@/assets/icon_web.svg" style="width: 58%" alt="" />
+                </AppAvatar>
+                <AppAvatar
+                  v-else-if="!item.dataset_id && item.type === '0'"
+                  class="mr-12 avatar-blue"
+                  shape="square"
+                  :size="24"
+                >
+                  <img src="@/assets/icon_document.svg" style="width: 58%" alt="" />
+                </AppAvatar>
+                {{ item.name }}
+              </span>
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="保存至文档" prop="document_id">
+          <el-select
+            v-model="form.document_id"
+            filterable
+            placeholder="请选择文档"
+            :loading="optionLoading"
+            @change="changeDocument"
+          >
+            <el-option
+              v-for="item in documentList"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            >
+              {{ item.name }}
+            </el-option>
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click.prevent="documentDialogVisible = false"> 取消 </el-button>
+          <el-button type="primary" @click="submitForm(formRef)" :loading="documentLoading">
+            保存
+          </el-button>
+        </span>
       </template>
     </el-dialog>
   </LayoutContainer>
@@ -188,12 +273,16 @@ import { beforeDay, datetimeFormat, nowDate } from '@/utils/time'
 import useStore from '@/stores'
 import type { Dict } from '@/api/type/common'
 import { t } from '@/locales'
+import type { FormInstance, FormRules } from 'element-plus'
 
-const { application, log } = useStore()
+const { application, log, document, user } = useStore()
 const route = useRoute()
 const {
   params: { id }
-} = route
+} = route as any
+
+const emit = defineEmits(['refresh'])
+const formRef = ref()
 
 const dayOptions = [
   {
@@ -228,12 +317,14 @@ const multipleSelection = ref<any[]>([])
 
 const ChatRecordRef = ref()
 const loading = ref(false)
+const documentLoading = ref(false)
 const paginationConfig = reactive({
   current_page: 1,
   page_size: 20,
   total: 0
 })
 const dialogVisible = ref(false)
+const documentDialogVisible = ref(false)
 const days = ref<number>(180)
 const tableData = ref<any[]>([])
 const tableIndexMap = computed<Dict<number>>(() => {
@@ -261,6 +352,19 @@ const filter = ref<any>({
   min_trample: 0,
   comparer: 'and'
 })
+
+const form = ref<any>({
+  dataset_id: '',
+  document_id: ''
+})
+
+const rules = reactive<FormRules>({
+  dataset_id: [{ required: true, message: '请选择知识库', trigger: 'change' }],
+  document_id: [{ required: true, message: '请选择文档', trigger: 'change' }]
+})
+
+const optionLoading = ref(false)
+const documentList = ref<any[]>([])
 
 function filterChange(val: string) {
   if (val === 'clear') {
@@ -360,13 +464,7 @@ function deleteLog(row: any) {
     .catch(() => {})
 }
 
-function handleSizeChange() {
-  paginationConfig.current_page = 1
-  getList()
-}
-
 function getList() {
-  paginationConfig.current_page = 1
   let obj: any = {
     start_time: daterange.value.start_time,
     end_time: daterange.value.end_time,
@@ -390,6 +488,7 @@ function getDetail() {
     days.value = res.data.clean_time
   })
 }
+
 const exportLog = () => {
   const arr: string[] = []
   multipleSelection.value.map((v) => {
@@ -430,10 +529,11 @@ function changeDayHandle(val: number | string) {
 }
 
 function saveCleanTime() {
-  const data = detail.value
-  data.clean_time = days.value
+  const obj = {
+    clean_time: days.value
+  }
   application
-    .asyncPutApplication(id as string, data, loading)
+    .asyncPutApplication(id as string, obj, loading)
     .then(() => {
       MsgSuccess('保存成功')
       dialogVisible.value = false
@@ -442,6 +542,74 @@ function saveCleanTime() {
     .catch(() => {
       dialogVisible.value = false
     })
+}
+
+function changeDataset(dataset_id: string) {
+  localStorage.setItem(id + 'chat_dataset_id', dataset_id)
+  form.value.document_id = ''
+  getDocument(dataset_id)
+}
+
+function changeDocument(document_id: string) {
+  localStorage.setItem(id + 'chat_document_id', document_id)
+}
+
+const datasetList = ref<any[]>([])
+
+function getDataset() {
+  application.asyncGetApplicationDataset(id, documentLoading).then((res: any) => {
+    datasetList.value = res.data
+    if (localStorage.getItem(id + 'chat_dataset_id')) {
+      form.value.dataset_id = localStorage.getItem(id + 'chat_dataset_id') as string
+      if (!datasetList.value.find((v) => v.id === form.value.dataset_id)) {
+        form.value.dataset_id = ''
+        form.value.document_id = ''
+      } else {
+        getDocument(form.value.dataset_id)
+      }
+    }
+  })
+}
+
+const submitForm = async (formEl: FormInstance | undefined) => {
+  if (!formEl) return
+  const arr: string[] = []
+  multipleSelection.value.map((v) => {
+    if (v) {
+      arr.push(v.id)
+    }
+  })
+  await formEl.validate((valid) => {
+    if (valid) {
+      const obj = {
+        document_id: form.value.document_id,
+        dataset_id: form.value.dataset_id,
+        chat_ids: arr
+      }
+      logApi.postChatRecordLog(id, form.value.dataset_id, obj, documentLoading).then((res: any) => {
+        multipleSelection.value = []
+        documentDialogVisible.value = false
+      })
+    }
+  })
+}
+
+function getDocument(dataset_id: string) {
+  document.asyncGetAllDocument(dataset_id, documentLoading).then((res: any) => {
+    documentList.value = res.data
+    if (localStorage.getItem(id + 'chat_document_id')) {
+      form.value.document_id = localStorage.getItem(id + 'chat_document_id') as string
+    }
+    if (!documentList.value.find((v) => v.id === form.value.document_id)) {
+      form.value.document_id = ''
+    }
+  })
+}
+
+function openDocumentDialog() {
+  getDataset()
+  formRef.value?.clearValidate()
+  documentDialogVisible.value = true
 }
 
 onMounted(() => {

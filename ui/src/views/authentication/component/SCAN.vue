@@ -28,7 +28,7 @@
             <div v-if="item.isValid" class="border-t mt-16">
               <el-row :gutter="12" class="mt-16">
                 <el-col v-for="(value, key) in item.config" :key="key" :span="12">
-                  <el-text type="info">{{ formatFieldName(key) }}</el-text>
+                  <el-text type="info">{{ formatFieldName(key, item) }}</el-text>
                   <div class="mt-4 mb-16 flex align-center">
                     <span
                       v-if="key !== 'app_secret'"
@@ -54,8 +54,11 @@
                       text
                       @click="toggleShowPassword(item.key)"
                     >
-                      <el-icon>
+                      <el-icon v-if="key === 'app_secret' && !showPassword[item.key]?.[key]">
                         <Hide />
+                      </el-icon>
+                      <el-icon v-if="key === 'app_secret' && showPassword[item.key]?.[key]">
+                        <View />
                       </el-icon>
                     </el-button>
                   </div>
@@ -128,7 +131,6 @@ function createPlatform(key: string, name: string): Platform {
 
   const config = {
     ...(key === 'wecom' ? { corp_id: '', agent_id: '' } : { app_key: '' }),
-    ...(key === 'dingtalk' ? { agent_id: '' } : {}),
     app_secret: '',
     callback_url: ''
   }
@@ -143,11 +145,11 @@ function createPlatform(key: string, name: string): Platform {
   }
 }
 
-function formatFieldName(key?: any): string {
+function formatFieldName(key?: any, item?: Platform): string {
   const fieldNames: { [key: string]: string } = {
-    app_key: 'APP Key',
-    app_secret: 'APP Secret',
     corp_id: 'Corp ID',
+    app_key: item?.key != 'lark' ? 'APP Key' : 'App ID',
+    app_secret: 'APP Secret',
     agent_id: 'Agent ID',
     callback_url: '回调地址'
   }
@@ -158,6 +160,7 @@ function formatFieldName(key?: any): string {
 }
 
 function getPlatformInfo() {
+  loading.value = true
   platformApi.getPlatformInfo(loading).then((res: any) => {
     if (res) {
       platforms.forEach((platform) => {
@@ -168,6 +171,15 @@ function getPlatformInfo() {
             isActive: data.is_active,
             config: data.config
           })
+          if (platform.key === 'dingtalk') {
+            const { corp_id, app_key, app_secret } = platform.config
+            platform.config = {
+              corp_id,
+              app_key,
+              app_secret,
+              callback_url: platform.config.callback_url
+            }
+          }
           showPassword[platform.key] = {}
           showPassword[platform.key]['app_secret'] = false
         }

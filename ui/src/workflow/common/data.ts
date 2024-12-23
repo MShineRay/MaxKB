@@ -39,6 +39,7 @@ export const baseNode = {
     node_data: {
       name: '',
       desc: '',
+      // @ts-ignore
       prologue: t('views.application.prompt.defaultPrologue')
     },
     config: {}
@@ -168,13 +169,135 @@ export const rerankerNode = {
     }
   }
 }
+export const formNode = {
+  type: WorkflowType.FormNode,
+  text: '在问答过程中用于收集用户信息，可以根据收集到表单数据执行后续流程',
+  label: '表单收集',
+  height: 252,
+  properties: {
+    width: 600,
+    stepName: '表单收集',
+    node_data: {
+      is_result: true,
+      form_field_list: [],
+      form_content_format: `你好，请先填写下面表单内容：
+{{form}}
+填写后请点击【提交】按钮进行提交。`
+    },
+    config: {
+      fields: [
+        {
+          label: '表单全部内容',
+          value: 'form_data'
+        }
+      ]
+    }
+  }
+}
+export const documentExtractNode = {
+  type: WorkflowType.DocumentExtractNode,
+  text: '提取文档中的内容',
+  label: '文档内容提取',
+  height: 252,
+  properties: {
+    stepName: '文档内容提取',
+    config: {
+      fields: [
+        {
+          label: '文档内容',
+          value: 'content'
+        }
+      ]
+    }
+  }
+}
+export const imageUnderstandNode = {
+  type: WorkflowType.ImageUnderstandNode,
+  text: '识别出图片中的对象、场景等信息回答用户问题',
+  label: '图片理解',
+  height: 252,
+  properties: {
+    stepName: '图片理解',
+    config: {
+      fields: [
+        {
+          label: 'AI 回答内容',
+          value: 'answer'
+        }
+      ]
+    }
+  }
+}
+
+export const imageGenerateNode = {
+  type: WorkflowType.ImageGenerateNode,
+  text: '根据提供的文本内容生成图片',
+  label: '图片生成',
+  height: 252,
+  properties: {
+    stepName: '图片生成',
+    config: {
+      fields: [
+        {
+          label: 'AI 回答内容',
+          value: 'answer'
+        },
+        {
+          label: '图片',
+          value: 'image'
+        }
+      ]
+    }
+  }
+}
+
+export const speechToTextNode = {
+  type: WorkflowType.SpeechToTextNode,
+  text: '将音频通过语音识别模型转换为文本',
+  label: '语音转文本',
+  height: 252,
+  properties: {
+    stepName: '语音转文本',
+    config: {
+      fields: [
+        {
+          label: '结果',
+          value: 'result'
+        }
+      ]
+    }
+  }
+}
+export const textToSpeechNode = {
+  type: WorkflowType.TextToSpeechNode,
+  text: '将文本通过语音合成模型转换为音频',
+  label: '文本转语音',
+  height: 252,
+  properties: {
+    stepName: '文本转语音',
+    config: {
+      fields: [
+        {
+          label: '结果',
+          value: 'result'
+        }
+      ]
+    }
+  }
+}
 export const menuNodes = [
   aiChatNode,
+  imageUnderstandNode,
+  imageGenerateNode,
   searchDatasetNode,
-  questionNode,
+  rerankerNode,
   conditionNode,
   replyNode,
-  rerankerNode
+  formNode,
+  questionNode,
+  documentExtractNode,
+  speechToTextNode,
+  textToSpeechNode
 ]
 
 /**
@@ -215,6 +338,24 @@ export const functionLibNode = {
   }
 }
 
+export const applicationNode = {
+  type: WorkflowType.Application,
+  text: '应用节点',
+  label: '应用节点',
+  height: 260,
+  properties: {
+    stepName: '应用节点',
+    config: {
+      fields: [
+        {
+          label: '结果',
+          value: 'result'
+        }
+      ]
+    }
+  }
+}
+
 export const compareList = [
   { value: 'is_null', label: '为空' },
   { value: 'is_not_null', label: '不为空' },
@@ -224,12 +365,12 @@ export const compareList = [
   { value: 'ge', label: '大于等于' },
   { value: 'gt', label: '大于' },
   { value: 'le', label: '小于等于' },
+  { value: 'lt', label: '小于' },
   { value: 'len_eq', label: '长度等于' },
   { value: 'len_ge', label: '长度大于等于' },
   { value: 'len_gt', label: '长度大于' },
   { value: 'len_le', label: '长度小于等于' },
-  { value: 'len_lt', label: '长度小于' },
-  { value: 'lt', label: '小于' }
+  { value: 'len_lt', label: '长度小于' }
 ]
 
 export const nodeDict: any = {
@@ -242,7 +383,14 @@ export const nodeDict: any = {
   [WorkflowType.Reply]: replyNode,
   [WorkflowType.FunctionLib]: functionLibNode,
   [WorkflowType.FunctionLibCustom]: functionNode,
-  [WorkflowType.RrerankerNode]: rerankerNode
+  [WorkflowType.RrerankerNode]: rerankerNode,
+  [WorkflowType.FormNode]: formNode,
+  [WorkflowType.Application]: applicationNode,
+  [WorkflowType.DocumentExtractNode]: documentExtractNode,
+  [WorkflowType.ImageUnderstandNode]: imageUnderstandNode,
+  [WorkflowType.TextToSpeechNode]: textToSpeechNode,
+  [WorkflowType.SpeechToTextNode]: speechToTextNode,
+  [WorkflowType.ImageGenerateNode]: imageGenerateNode
 }
 export function isWorkFlow(type: string | undefined) {
   return type === 'WORK_FLOW'

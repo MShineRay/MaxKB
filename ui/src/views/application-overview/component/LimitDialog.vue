@@ -19,6 +19,7 @@
           v-model="form.access_num"
           :min="0"
           :step="1"
+          :max="10000"
           :value-on-clear="0"
           controls-position="right"
           style="width: 268px"
@@ -41,30 +42,34 @@
         :label="$t('views.applicationOverview.appInfo.LimitDialog.authenticationValue')"
         v-hasPermission="new ComplexPermission([], ['x-pack'], 'OR')"
       >
-        <el-input v-model="form.authentication_value" readonly style="width: 268px" disabled>
+        <el-input
+          class="authentication-append-input"
+          v-model="form.authentication_value"
+          readonly
+          style="width: 268px"
+          disabled
+        >
           <template #append>
-            <div class="button-container">
-              <el-tooltip content="复制" placement="top">
-                <el-button
-                  type="primary"
-                  text
-                  @click="copyClick(form.authentication_value)"
-                  style="width: 24px; height: 24px"
-                >
-                  <AppIcon iconName="app-copy"></AppIcon>
-                </el-button>
-              </el-tooltip>
-              <el-tooltip content="刷新" placement="top">
-                <el-button
-                  @click="refreshAuthentication"
-                  type="primary"
-                  text
-                  style="width: 24px; height: 24px; margin-left: 20px"
-                >
-                  <el-icon><RefreshRight /></el-icon>
-                </el-button>
-              </el-tooltip>
-            </div>
+            <el-tooltip content="复制" placement="top">
+              <el-button
+                type="primary"
+                text
+                @click="copyClick(form.authentication_value)"
+                style="margin: 0 4px !important"
+              >
+                <AppIcon iconName="app-copy"></AppIcon>
+              </el-button>
+            </el-tooltip>
+            <el-tooltip content="刷新" placement="top">
+              <el-button
+                @click="refreshAuthentication"
+                type="primary"
+                text
+                style="margin: 0 4px 0 0 !important"
+              >
+                <el-icon><RefreshRight /></el-icon>
+              </el-button>
+            </el-tooltip>
           </template>
         </el-input>
       </el-form-item>
@@ -184,4 +189,10 @@ function firstGeneration() {
 
 defineExpose({ open })
 </script>
-<style lang="scss" scope></style>
+<style lang="scss" scope>
+.authentication-append-input {
+  .el-input-group__append {
+    padding: 0 !important;
+  }
+}
+</style>

@@ -26,6 +26,8 @@ DATABASES = {
     'default': CONFIG.get_db_setting()
 }
 
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -103,6 +105,10 @@ CACHES = {
             'MAX_ENTRIES': 150,
             'CULL_FREQUENCY': 5,
         }
+    },
+    'default_file': {
+        'BACKEND': 'common.cache.file_cache.FileCache',
+        'LOCATION': os.path.join(PROJECT_DIR, 'data', 'cache', "default_file_cache")  # 文件夹路径
     },
     'chat_cache': {
         'BACKEND': 'common.cache.file_cache.FileCache',

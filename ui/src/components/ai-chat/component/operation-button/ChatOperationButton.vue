@@ -19,7 +19,7 @@
       </el-tooltip>
       <el-divider direction="vertical" />
     </span>
-    <span v-if="applicationId">
+    <span v-if="type == 'ai-chat' || type == 'log'">
       <el-tooltip effect="dark" content="换个答案" placement="top">
         <el-button :disabled="chat_loading" text @click="regeneration">
           <el-icon><RefreshRight /></el-icon>
@@ -90,26 +90,21 @@ const {
   params: { id }
 } = route as any
 
-const props = defineProps({
-  data: {
-    type: Object,
-    default: () => {}
-  },
-  applicationId: {
-    type: String,
-    default: ''
-  },
-  chatId: {
-    type: String,
-    default: ''
-  },
-  chat_loading: {
-    type: Boolean
-  },
-  log: Boolean,
-  tts: Boolean,
-  tts_type: String
-})
+const props = withDefaults(
+  defineProps<{
+    data: any
+    type: 'log' | 'ai-chat' | 'debug-ai-chat'
+    chatId: string
+    chat_loading: boolean
+    applicationId: string
+    tts: boolean
+    tts_type: string
+  }>(),
+  {
+    data: () => ({}),
+    type: 'ai-chat'
+  }
+)
 
 const emit = defineEmits(['update:data', 'regeneration'])
 
@@ -157,12 +152,21 @@ function markdownToPlainText(md: string) {
   )
 }
 
+function removeFormRander(text: string) {
+  return text
+    .replace(/<form_rander>[\s\S]*?<\/form_rander>/g, '')
+    .trim()
+}
+
 const playAnswerText = (text: string) => {
   if (!text) {
     text = '抱歉，没有查找到相关内容，请重新描述您的问题或提供更多信息。'
   }
+  // 移除表单渲染器
+  text = removeFormRander(text)
   // text 处理成纯文本
   text = markdownToPlainText(text)
+  // console.log(text)
   audioPlayerStatus.value = true
   if (props.tts_type === 'BROWSER') {
     if (text !== utterance.value?.text) {

@@ -6,7 +6,6 @@
     @date：2024/8/19 14:13
     @desc:
 """
-import datetime
 import logging
 import traceback
 from typing import List
@@ -17,7 +16,7 @@ from django.db.models import QuerySet
 from common.config.embedding_config import ModelManage
 from common.event import ListenerManagement, UpdateProblemArgs, UpdateEmbeddingDatasetIdArgs, \
     UpdateEmbeddingDocumentIdArgs
-from dataset.models import Document, Status
+from dataset.models import Document, TaskType, State
 from ops import celery_app
 from setting.models import Model
 from setting.models_provider import get_model
@@ -66,8 +65,8 @@ def embedding_by_document(document_id, model_id):
     """
 
     def exception_handler(e):
-        QuerySet(Document).filter(id=document_id).update(
-            **{'status': Status.error, 'update_time': datetime.datetime.now()})
+        ListenerManagement.update_status(QuerySet(Document).filter(id=document_id), TaskType.EMBEDDING,
+                                         State.FAILURE)
         max_kb_error.error(
             f'获取向量模型失败：{str(e)}{traceback.format_exc()}')
 

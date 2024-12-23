@@ -43,7 +43,7 @@
                             action="#"
                             :auto-upload="false"
                             :show-file-list="false"
-                            accept="image/*"
+                            accept="image/jpeg, image/png, image/gif"
                             :on-change="
                               (file: any, fileList: any) => onChange(file, fileList, 'icon')
                             "
@@ -52,8 +52,8 @@
                           </el-upload>
                         </div>
                         <el-text type="info" size="small"
-                          >顶部网站显示的 Logo，建议尺寸 48*48，支持 JPG、PNG、SVG，大小不超过
-                          200KB</el-text
+                          >顶部网站显示的 Logo，建议尺寸 48*48，支持 JPG、PNG、GIF，大小不超过 10
+                          MB</el-text
                         >
                       </el-card>
                       <el-card shadow="never" class="mb-8">
@@ -64,7 +64,7 @@
                             action="#"
                             :auto-upload="false"
                             :show-file-list="false"
-                            accept="image/*"
+                            accept="image/jpeg, image/png, image/gif"
                             :on-change="
                               (file: any, fileList: any) => onChange(file, fileList, 'loginLogo')
                             "
@@ -73,8 +73,8 @@
                           </el-upload>
                         </div>
                         <el-text type="info" size="small"
-                          >登录页面右侧 Logo，建议尺寸 204*52，支持 JPG、PNG、SVG，大小不超过
-                          200KB</el-text
+                          >登录页面右侧 Logo，建议尺寸 204*52，支持 JPG、PNG、GIF，大小不超过 10
+                          MB</el-text
                         >
                       </el-card>
                       <el-card shadow="never" class="mb-8">
@@ -85,7 +85,7 @@
                             action="#"
                             :auto-upload="false"
                             :show-file-list="false"
-                            accept="image/*"
+                            accept="image/jpeg, image/png, image/gif"
                             :on-change="
                               (file: any, fileList: any) => onChange(file, fileList, 'loginImage')
                             "
@@ -95,7 +95,7 @@
                         </div>
                         <el-text type="info" size="small">
                           左侧背景图，矢量图建议尺寸 576*900，位图建议尺寸 1152*1800；支持
-                          JPG、PNG、SVG，大小不超过 5M
+                          JPG、PNG、GIF，大小不超过 10 MB
                         </el-text>
                       </el-card>
 
@@ -265,24 +265,13 @@ const rules = reactive<FormRules>({
 })
 
 const onChange = (file: any, fileList: UploadFiles, attr: string) => {
-  if (attr === 'loginImage') {
-    const isLimit = file?.size / 1024 / 1024 < 5
-    if (!isLimit) {
-      // @ts-ignore
-      MsgError(`文件大小超过 5M`)
-      return false
-    } else {
-      themeForm.value[attr] = file.raw
-    }
+  const isLimit = file?.size / 1024 / 1024 < 10
+  if (!isLimit) {
+    // @ts-ignore
+    MsgError(`文件大小超过 10M`)
+    return false
   } else {
-    const isLimit = file?.size / 1024 < 200
-    if (!isLimit) {
-      // @ts-ignore
-      MsgError(`文件大小超过 200KB`)
-      return false
-    } else {
-      themeForm.value[attr] = file.raw
-    }
+    themeForm.value[attr] = file.raw
   }
   user.setTheme(themeForm.value)
 }
@@ -305,7 +294,7 @@ function resetTheme() {
 
 function resetForm(val: string) {
   themeForm.value =
-    val === 'base'
+    val === 'login'
       ? {
           ...themeForm.value,
           theme: themeForm.value.theme,

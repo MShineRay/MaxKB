@@ -40,9 +40,7 @@
         <el-row :gutter="12" v-loading="loading">
           <el-col :span="12" v-for="(item, index) in filterData" :key="index" class="mb-16">
             <CardCheckbox value-field="id" :data="item" v-model="checkList" @change="changeHandle">
-              <span class="ellipsis">
-                {{ item.name }}
-              </span>
+              <span class="ellipsis cursor" :title="item.name"> {{ item.name }}</span>
             </CardCheckbox>
           </el-col>
         </el-row>

@@ -28,6 +28,13 @@ from setting.models_provider import get_model, get_model_credential
 from setting.models_provider.base_model_provider import ValidCode, DownModelChunkStatus
 from setting.models_provider.constants.model_provider_constants import ModelProvideConstants
 
+def get_default_model_params_setting(provider, model_type, model_name):
+    credential = get_model_credential(provider, model_type, model_name)
+    setting_form = credential.get_model_params_setting_form(model_name)
+    if setting_form is not None:
+        return setting_form.to_form_list()
+    return []
+
 
 class ModelPullManage:
 
@@ -79,7 +86,6 @@ class ModelSerializer(serializers.Serializer):
 
         create_user = serializers.CharField(required=False, error_messages=ErrMessage.char("创建者"))
 
-
         def list(self, with_valid):
             if with_valid:
                 self.is_valid(raise_exception=True)
@@ -92,7 +98,8 @@ class ModelSerializer(serializers.Serializer):
                     model_query_set = QuerySet(Model).filter(Q(user_id=create_user))
                 # 当前用户能查看其他人的模型，只能查看公开的
                 else:
-                    model_query_set = QuerySet(Model).filter((Q(user_id=self.data.get('create_user')) & Q(permission_type='PUBLIC')))
+                    model_query_set = QuerySet(Model).filter(
+                        (Q(user_id=self.data.get('create_user')) & Q(permission_type='PUBLIC')))
             else:
                 model_query_set = QuerySet(Model).filter((Q(user_id=user_id) | Q(permission_type='PUBLIC')))
             query_params = {}
@@ -107,11 +114,11 @@ class ModelSerializer(serializers.Serializer):
             if self.data.get('permission_type') is not None:
                 query_params['permission_type'] = self.data.get('permission_type')
 
-
             return [
                 {'id': str(model.id), 'provider': model.provider, 'name': model.name, 'model_type': model.model_type,
                  'model_name': model.model_name, 'status': model.status, 'meta': model.meta,
-                 'permission_type': model.permission_type, 'user_id': model.user_id, 'username': model.user.username} for model in
+                 'permission_type': model.permission_type, 'user_id': model.user_id, 'username': model.user.username}
+                for model in
                 model_query_set.filter(**query_params).order_by("-create_time")]
 
     class Edit(serializers.Serializer):
@@ -173,6 +180,8 @@ class ModelSerializer(serializers.Serializer):
 
         model_name = serializers.CharField(required=True, error_messages=ErrMessage.char("基础模型"))
 
+        model_params_form = serializers.ListField(required=False, default=list, error_messages=ErrMessage.char("参数配置"))
+
         credential = serializers.DictField(required=True, error_messages=ErrMessage.dict("认证信息"))
 
         def is_valid(self, *, raise_exception=False):
@@ -202,10 +211,12 @@ class ModelSerializer(serializers.Serializer):
             model_type = self.data.get('model_type')
             model_name = self.data.get('model_name')
             permission_type = self.data.get('permission_type')
+            model_params_form = self.data.get('model_params_form')
             model_credential_str = json.dumps(credential)
             model = Model(id=uuid.uuid1(), status=status, user_id=user_id, name=name,
                           credential=rsa_long_encrypt(model_credential_str),
                           provider=provider, model_type=model_type, model_name=model_name,
+                          model_params_form=model_params_form,
                           permission_type=permission_type)
             model.save()
             if status == Status.DOWNLOAD:
@@ -243,14 +254,7 @@ class ModelSerializer(serializers.Serializer):
                 self.is_valid(raise_exception=True)
             model_id = self.data.get('id')
             model = QuerySet(Model).filter(id=model_id).first()
-            credential = get_model_credential(model.provider, model.model_type, model.model_name)
             # 已经保存过的模型参数表单
-            if model.model_params_form is not None and len(model.model_params_form) > 0:
-                return model.model_params_form
-            # 没有保存过的LLM类型的
-            if credential.get_model_params_setting_form(model.model_name) is not None:
-                return credential.get_model_params_setting_form(model.model_name).to_form_list()
-            # 其他的
             return model.model_params_form
 
     class ModelParamsForm(serializers.Serializer):

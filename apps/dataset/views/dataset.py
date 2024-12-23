@@ -103,7 +103,8 @@ class Dataset(APIView):
                          tags=["知识库"])
     @has_permissions(PermissionConstants.DATASET_READ, compare=CompareConstants.AND)
     def get(self, request: Request):
-        d = DataSetSerializers.Query(data={**request.query_params, 'user_id': str(request.user.id)})
+        data = {key: str(value) for key, value in request.query_params.items()}
+        d = DataSetSerializers.Query(data={**data, 'user_id': str(request.user.id)})
         d.is_valid()
         return result.success(d.list())
 
@@ -165,6 +166,19 @@ class Dataset(APIView):
         def get(self, request: Request, dataset_id: str):
             return DataSetSerializers.Operate(data={'id': dataset_id, 'user_id': request.user.id}).export_excel()
 
+    class ExportZip(APIView):
+        authentication_classes = [TokenAuth]
+
+        @action(methods="GET", detail=False)
+        @swagger_auto_schema(operation_summary="导出知识库包含图片", operation_id="导出知识库包含图片",
+                             manual_parameters=DataSetSerializers.Operate.get_request_params_api(),
+                             tags=["知识库"]
+                             )
+        @has_permissions(lambda r, keywords: Permission(group=Group.DATASET, operate=Operate.MANAGE,
+                                                        dynamic_tag=keywords.get('dataset_id')))
+        def get(self, request: Request, dataset_id: str):
+            return DataSetSerializers.Operate(data={'id': dataset_id, 'user_id': request.user.id}).export_zip()
+
     class Operate(APIView):
         authentication_classes = [TokenAuth]
 
@@ -221,7 +235,8 @@ class Dataset(APIView):
         def get(self, request: Request, current_page, page_size):
             d = DataSetSerializers.Query(
                 data={'name': request.query_params.get('name', None), 'desc': request.query_params.get("desc", None),
-                      'user_id': str(request.user.id)})
+                      'user_id': str(request.user.id),
+                      'select_user_id': request.query_params.get('select_user_id', None)})
             d.is_valid()
             return result.success(d.page(current_page, page_size))
 
