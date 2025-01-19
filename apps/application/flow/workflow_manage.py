@@ -6,13 +6,16 @@
     @date：2024/1/9 17:40
     @desc:
 """
+import concurrent
 import json
 import threading
 import traceback
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from functools import reduce
 from typing import List, Dict
 
+from django.db import close_old_connections
 from django.db.models import QuerySet
 from langchain_core.prompts import PromptTemplate
 from rest_framework import status
@@ -223,23 +226,6 @@ class NodeChunkManage:
         return None
 
 
-class NodeChunk:
-    def __init__(self):
-        self.status = 0
-        self.chunk_list = []
-
-    def add_chunk(self, chunk):
-        self.chunk_list.append(chunk)
-
-    def end(self, chunk=None):
-        if chunk is not None:
-            self.add_chunk(chunk)
-        self.status = 200
-
-    def is_end(self):
-        return self.status == 200
-
-
 class WorkflowManage:
     def __init__(self, flow: Flow, params, work_flow_post_handler: WorkFlowPostHandler,
                  base_to_response: BaseToResponse = SystemToResponse(), form_data=None, image_list=None,
@@ -263,7 +249,6 @@ class WorkflowManage:
         self.audio_list = audio_list
         self.params = params
         self.flow = flow
-        self.lock = threading.Lock()
         self.context = {}
         self.node_chunk_manage = NodeChunkManage(self)
         self.work_flow_post_handler = work_flow_post_handler
@@ -274,8 +259,9 @@ class WorkflowManage:
         self.status = 200
         self.base_to_response = base_to_response
         self.chat_record = chat_record
-        self.await_future_map = {}
         self.child_node = child_node
+        self.future_list = []
+        self.lock = threading.Lock()
         if start_node_id is not None:
             self.load_node(chat_record, start_node_id, start_node_data)
         else:
@@ -320,6 +306,7 @@ class WorkflowManage:
             self.node_context.append(node)
 
     def run(self):
+        close_old_connections()
         if self.params.get('stream'):
             return self.run_stream(self.start_node, None)
         return self.run_block()
@@ -329,8 +316,9 @@ class WorkflowManage:
         非流式响应
         @return: 结果
         """
-        result = self.run_chain_async(None, None)
-        result.result()
+        self.run_chain_async(None, None)
+        while self.is_run():
+            pass
         details = self.get_runtime_details()
         message_tokens = sum([row.get('message_tokens') for row in details.values() if
                               'message_tokens' in row and row.get('message_tokens') is not None])
@@ -351,12 +339,26 @@ class WorkflowManage:
         流式响应
         @return:
         """
-        result = self.run_chain_async(current_node, node_result_future)
-        return tools.to_stream_response_simple(self.await_result(result))
+        self.run_chain_async(current_node, node_result_future)
+        return tools.to_stream_response_simple(self.await_result())
 
-    def await_result(self, result):
+    def is_run(self, timeout=0.5):
+        future_list_len = len(self.future_list)
         try:
-            while await_result(result):
+            r = concurrent.futures.wait(self.future_list, timeout)
+            if len(r.not_done) > 0:
+                return True
+            else:
+                if future_list_len == len(self.future_list):
+                    return False
+                else:
+                    return True
+        except Exception as e:
+            return True
+
+    def await_result(self):
+        try:
+            while self.is_run():
                 while True:
                     chunk = self.node_chunk_manage.pop()
                     if chunk is not None:
@@ -384,47 +386,42 @@ class WorkflowManage:
                                                                  '', True, message_tokens, answer_tokens, {})
 
     def run_chain_async(self, current_node, node_result_future):
-        return executor.submit(self.run_chain_manage, current_node, node_result_future)
+        future = executor.submit(self.run_chain_manage, current_node, node_result_future)
+        self.future_list.append(future)
 
     def run_chain_manage(self, current_node, node_result_future):
         if current_node is None:
             start_node = self.get_start_node()
             current_node = get_node(start_node.type)(start_node, self.params, self)
+        self.node_chunk_manage.add_node_chunk(current_node.node_chunk)
+        # 添加节点
+        self.append_node(current_node)
         result = self.run_chain(current_node, node_result_future)
+        if result is None:
+            return
         node_list = self.get_next_node_list(current_node, result)
         if len(node_list) == 1:
             self.run_chain_manage(node_list[0], None)
         elif len(node_list) > 1:
-
+            sorted_node_run_list = sorted(node_list, key=lambda n: n.node.y)
             # 获取到可执行的子节点
             result_list = [{'node': node, 'future': executor.submit(self.run_chain_manage, node, None)} for node in
-                           node_list]
-            self.set_await_map(result_list)
-            [r.get('future').result() for r in result_list]
-
-    def set_await_map(self, node_run_list):
-        sorted_node_run_list = sorted(node_run_list, key=lambda n: n.get('node').node.y)
-        for index in range(len(sorted_node_run_list)):
-            self.await_future_map[sorted_node_run_list[index].get('node').runtime_node_id] = [
-                sorted_node_run_list[i].get('future')
-                for i in range(index)]
+                           sorted_node_run_list]
+            for r in result_list:
+                self.future_list.append(r.get('future'))
 
     def run_chain(self, current_node, node_result_future=None):
         if node_result_future is None:
             node_result_future = self.run_node_future(current_node)
         try:
             is_stream = self.params.get('stream', True)
-            # 处理节点响应
-            await_future_list = self.await_future_map.get(current_node.runtime_node_id, None)
-            if await_future_list is not None:
-                [f.result() for f in await_future_list]
             result = self.hand_event_node_result(current_node,
                                                  node_result_future) if is_stream else self.hand_node_result(
                 current_node, node_result_future)
             return result
         except Exception as e:
             traceback.print_exc()
-        return []
+        return None
 
     def hand_node_result(self, current_node, node_result_future):
         try:
@@ -433,16 +430,14 @@ class WorkflowManage:
             if result is not None:
                 # 阻塞获取结果
                 list(result)
-            # 添加节点
-            self.node_context.append(current_node)
             return current_result
         except Exception as e:
-            # 添加节点
-            self.node_context.append(current_node)
             traceback.print_exc()
             self.status = 500
             current_node.get_write_error_context(e)
             self.answer += str(e)
+        finally:
+            current_node.node_chunk.end()
 
     def append_node(self, current_node):
         for index in range(len(self.node_context)):
@@ -453,15 +448,14 @@ class WorkflowManage:
         self.node_context.append(current_node)
 
     def hand_event_node_result(self, current_node, node_result_future):
-        node_chunk = NodeChunk()
         real_node_id = current_node.runtime_node_id
         child_node = {}
+        view_type = current_node.view_type
         try:
             current_result = node_result_future.result()
             result = current_result.write_context(current_node, self)
             if result is not None:
                 if self.is_result(current_node, current_result):
-                    self.node_chunk_manage.add_node_chunk(node_chunk)
                     for r in result:
                         content = r
                         child_node = {}
@@ -486,28 +480,25 @@ class WorkflowManage:
                                                                                 'child_node': child_node,
                                                                                 'node_is_end': node_is_end,
                                                                                 'real_node_id': real_node_id})
-                        node_chunk.add_chunk(chunk)
-                    chunk = self.base_to_response.to_stream_chunk_response(self.params['chat_id'],
-                                                                           self.params['chat_record_id'],
-                                                                           current_node.id,
-                                                                           current_node.up_node_id_list,
-                                                                           '', False, 0, 0, {'node_is_end': True,
-                                                                                             'runtime_node_id': current_node.runtime_node_id,
-                                                                                             'node_type': current_node.type,
-                                                                                             'view_type': view_type,
-                                                                                             'child_node': child_node,
-                                                                                             'real_node_id': real_node_id})
-                    node_chunk.end(chunk)
+                        current_node.node_chunk.add_chunk(chunk)
+                    chunk = (self.base_to_response
+                             .to_stream_chunk_response(self.params['chat_id'],
+                                                       self.params['chat_record_id'],
+                                                       current_node.id,
+                                                       current_node.up_node_id_list,
+                                                       '', False, 0, 0, {'node_is_end': True,
+                                                                         'runtime_node_id': current_node.runtime_node_id,
+                                                                         'node_type': current_node.type,
+                                                                         'view_type': view_type,
+                                                                         'child_node': child_node,
+                                                                         'real_node_id': real_node_id}))
+                    current_node.node_chunk.add_chunk(chunk)
                 else:
                     list(result)
-            # 添加节点
-            self.append_node(current_node)
             return current_result
         except Exception as e:
             # 添加节点
-            self.append_node(current_node)
             traceback.print_exc()
-            self.answer += str(e)
             chunk = self.base_to_response.to_stream_chunk_response(self.params['chat_id'],
                                                                    self.params['chat_record_id'],
                                                                    current_node.id,
@@ -519,11 +510,12 @@ class WorkflowManage:
                                                                     'view_type': current_node.view_type,
                                                                     'child_node': {},
                                                                     'real_node_id': real_node_id})
-            if not self.node_chunk_manage.contains(node_chunk):
-                self.node_chunk_manage.add_node_chunk(node_chunk)
-            node_chunk.end(chunk)
+            current_node.node_chunk.add_chunk(chunk)
             current_node.get_write_error_context(e)
             self.status = 500
+            return None
+        finally:
+            current_node.node_chunk.end()
 
     def run_node_async(self, node):
         future = executor.submit(self.run_node, node)
@@ -584,7 +576,7 @@ class WorkflowManage:
             details['node_id'] = node.id
             details['up_node_id_list'] = node.up_node_id_list
             details['runtime_node_id'] = node.runtime_node_id
-            details_result[node.runtime_node_id] = details
+            details_result[str(uuid.uuid1())] = details
         return details_result
 
     def get_answer_text_list(self):
@@ -635,6 +627,8 @@ class WorkflowManage:
 
     @staticmethod
     def dependent_node(up_node_id, node):
+        if not node.node_chunk.is_end():
+            return False
         if node.id == up_node_id:
             if node.type == 'form-node':
                 if node.context.get('form_data', None) is not None:
@@ -671,9 +665,18 @@ class WorkflowManage:
             for edge in self.flow.edges:
                 if (edge.sourceNodeId == current_node.id and
                         f"{edge.sourceNodeId}_{current_node_result.node_variable.get('branch_id')}_right" == edge.sourceAnchorId):
-                    if self.dependent_node_been_executed(edge.targetNodeId):
+                    next_node = [node for node in self.flow.nodes if node.id == edge.targetNodeId]
+                    if len(next_node) == 0:
+                        continue
+                    if next_node[0].properties.get('condition', "AND") == 'AND':
+                        if self.dependent_node_been_executed(edge.targetNodeId):
+                            node_list.append(
+                                self.get_node_cls_by_id(edge.targetNodeId,
+                                                        [*current_node.up_node_id_list, current_node.node.id]))
+                    else:
                         node_list.append(
-                            self.get_node_cls_by_id(edge.targetNodeId, self.get_up_node_id_list(edge.targetNodeId)))
+                            self.get_node_cls_by_id(edge.targetNodeId,
+                                                    [*current_node.up_node_id_list, current_node.node.id]))
         else:
             for edge in self.flow.edges:
                 if edge.sourceNodeId == current_node.id:
@@ -683,10 +686,12 @@ class WorkflowManage:
                     if next_node[0].properties.get('condition', "AND") == 'AND':
                         if self.dependent_node_been_executed(edge.targetNodeId):
                             node_list.append(
-                                self.get_node_cls_by_id(edge.targetNodeId, self.get_up_node_id_list(edge.targetNodeId)))
+                                self.get_node_cls_by_id(edge.targetNodeId,
+                                                        [*current_node.up_node_id_list, current_node.node.id]))
                     else:
                         node_list.append(
-                            self.get_node_cls_by_id(edge.targetNodeId, self.get_up_node_id_list(edge.targetNodeId)))
+                            self.get_node_cls_by_id(edge.targetNodeId,
+                                                    [*current_node.up_node_id_list, current_node.node.id]))
         return node_list
 
     def get_reference_field(self, node_id: str, fields: List[str]):
@@ -700,33 +705,43 @@ class WorkflowManage:
         else:
             return self.get_node_by_id(node_id).get_reference_field(fields)
 
-    def generate_prompt(self, prompt: str):
-        """
-        格式化生成提示词
-        @param prompt: 提示词信息
-        @return: 格式化后的提示词
-        """
+    def get_workflow_content(self):
         context = {
             'global': self.context,
         }
 
         for node in self.node_context:
-            properties = node.node.properties
+            context[node.id] = node.context
+        return context
+
+    def reset_prompt(self, prompt: str):
+        placeholder = "{}"
+        for node in self.flow.nodes:
+            properties = node.properties
             node_config = properties.get('config')
             if node_config is not None:
                 fields = node_config.get('fields')
                 if fields is not None:
                     for field in fields:
                         globeLabel = f"{properties.get('stepName')}.{field.get('value')}"
-                        globeValue = f"context['{node.id}'].{field.get('value')}"
+                        globeValue = f"context.get('{node.id}',{placeholder}).get('{field.get('value', '')}','')"
                         prompt = prompt.replace(globeLabel, globeValue)
                 global_fields = node_config.get('globalFields')
                 if global_fields is not None:
                     for field in global_fields:
                         globeLabel = f"全局变量.{field.get('value')}"
-                        globeValue = f"context['global'].{field.get('value')}"
+                        globeValue = f"context.get('global').get('{field.get('value', '')}','')"
                         prompt = prompt.replace(globeLabel, globeValue)
-                context[node.id] = node.context
+        return prompt
+
+    def generate_prompt(self, prompt: str):
+        """
+        格式化生成提示词
+        @param prompt: 提示词信息
+        @return: 格式化后的提示词
+        """
+        context = self.get_workflow_content()
+        prompt = self.reset_prompt(prompt)
         prompt_template = PromptTemplate.from_template(prompt, template_format='jinja2')
         value = prompt_template.format(context=context)
         return value

@@ -1,15 +1,14 @@
 <template>
   <el-form-item
+    class="defaultValueItem"
+    :label="$t('components.dynamicsForm.default.label')"
     :required="formValue.required"
     prop="default_value"
     :rules="[default_value_rule]"
   >
-    <template #label>
-      <div class="flex-between">
-        默认值
-        <el-checkbox v-model="formValue.show_default_value" label="显示默认值" />
-      </div>
-    </template>
+    <div class="defaultValueCheckbox">
+      <el-checkbox v-model="formValue.show_default_value" label="显示默认值" />
+    </div>
     <JsonInput ref="jsonInputRef" v-model="formValue.default_value"> </JsonInput>
   </el-form-item>
 </template>
@@ -46,7 +45,7 @@ const getData = () => {
       ]
     },
     default_value: formValue.value.default_value,
-    show_default_value: formValue.value.show_default_value,
+    show_default_value: formValue.value.show_default_value
   }
 }
 
@@ -61,12 +60,22 @@ const default_value_rule = {
 
 const rander = (form_data: any) => {
   formValue.value.default_value = form_data.default_value
-  formValue.value.show_default_value = form_data.show_default_value
 }
 defineExpose({ getData, rander })
 onMounted(() => {
   formValue.value.default_value = {}
-  formValue.value.show_default_value = true
+  if (formValue.value.show_default_value === undefined) {
+    formValue.value.show_default_value = true
+  }
 })
 </script>
-<style lang="scss"></style>
+<style lang="scss" scoped>
+.defaultValueItem {
+  position: relative;
+  .defaultValueCheckbox {
+    position: absolute;
+    right: 0;
+    top: -35px;
+  }
+}
+</style>

@@ -626,22 +626,6 @@ h5 {
   }
 }
 
-// AI模型选择：添加模型hover样式
-.select-model {
-  .el-select-dropdown__footer {
-    &:hover {
-      background-color: var(--el-fill-color-light);
-    }
-  }
-  .model-icon {
-    width: 20px;
-  }
-  .check-icon {
-    position: absolute;
-    right: 10px;
-  }
-}
-
 // 段落card
 .paragraph-source-card {
   height: 210px;
@@ -753,4 +737,19 @@ h5 {
 //企业微信
 .wwLogin_qrcode_head {
   padding: 20px 0 !important;
+}
+
+// 复合搜索框
+.complex-search {
+  border: 1px solid var(--el-border-color);
+  border-radius: var(--el-border-radius-base);
+  .el-select__wrapper {
+    box-shadow: none !important;
+  }
+  .el-input__wrapper {
+    box-shadow: none !important;
+  }
+  &__left {
+    border-right: 1px solid var(--el-border-color);
+  }
 }

@@ -22,7 +22,7 @@ RUN mkdir -p /opt/maxkb/app /opt/maxkb/model /opt/maxkb/conf && \
 COPY --from=web-build ui /opt/maxkb/app/ui
 WORKDIR /opt/maxkb/app
 RUN python3 -m venv /opt/py3 && \
-    pip install poetry --break-system-packages && \
+    pip install poetry==1.8.5 --break-system-packages && \
     poetry config virtualenvs.create false && \
     . /opt/py3/bin/activate && \
     if [ "$(uname -m)" = "x86_64" ]; then sed -i 's/^torch.*/torch = {version = "^2.2.1+cpu", source = "pytorch"}/g' pyproject.toml; fi && \
@@ -40,6 +40,7 @@ ENV MAXKB_VERSION="${DOCKER_IMAGE_TAG} (build at ${BUILD_AT}, commit: ${GITHUB_C
     MAXKB_DB_PORT=5432  \
     MAXKB_DB_USER=root \
     MAXKB_DB_PASSWORD=Password123@postgres \
+    MAXKB_DB_MAX_OVERFLOW=80 \
     MAXKB_EMBEDDING_MODEL_NAME=/opt/maxkb/model/embedding/shibing624_text2vec-base-chinese \
     MAXKB_EMBEDDING_MODEL_PATH=/opt/maxkb/model/embedding \
     MAXKB_SANDBOX=1 \
@@ -47,6 +48,7 @@ ENV MAXKB_VERSION="${DOCKER_IMAGE_TAG} (build at ${BUILD_AT}, commit: ${GITHUB_C
     PATH=/opt/py3/bin:$PATH \
     POSTGRES_USER=root \
     POSTGRES_PASSWORD=Password123@postgres \
+    POSTGRES_MAX_CONNECTIONS=1000 \
     PIP_TARGET=/opt/maxkb/app/sandbox/python-packages \
     PYTHONPATH=/opt/maxkb/app/sandbox/python-packages \
     PYTHONUNBUFFERED=1

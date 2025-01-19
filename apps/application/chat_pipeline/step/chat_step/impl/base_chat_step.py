@@ -26,11 +26,14 @@ from application.chat_pipeline.step.chat_step.i_chat_step import IChatStep, Post
 from application.models.api_key_model import ApplicationPublicAccessClient
 from common.constants.authentication_type import AuthenticationType
 from setting.models_provider.tools import get_model_instance_by_model_user_id
+from django.utils.translation import gettext_lazy as _
 
 
-def add_access_num(client_id=None, client_type=None):
-    if client_type == AuthenticationType.APPLICATION_ACCESS_TOKEN.value:
-        application_public_access_client = QuerySet(ApplicationPublicAccessClient).filter(id=client_id).first()
+def add_access_num(client_id=None, client_type=None, application_id=None):
+    if client_type == AuthenticationType.APPLICATION_ACCESS_TOKEN.value and application_id is not None:
+        application_public_access_client = (QuerySet(ApplicationPublicAccessClient).filter(client_id=client_id,
+                                                                                           application_id=application_id)
+                                            .first())
         if application_public_access_client is not None:
             application_public_access_client.access_num = application_public_access_client.access_num + 1
             application_public_access_client.intraday_access_num = application_public_access_client.intraday_access_num + 1
@@ -90,14 +93,14 @@ def event_content(response,
                                                                      request_token, response_token,
                                                                      {'node_is_end': True, 'view_type': 'many_view',
                                                                       'node_type': 'ai-chat-node'})
-        add_access_num(client_id, client_type)
+        add_access_num(client_id, client_type, manage.context.get('application_id'))
     except Exception as e:
         logging.getLogger("max_kb_error").error(f'{str(e)}:{traceback.format_exc()}')
         all_text = '异常' + str(e)
         write_context(step, manage, 0, 0, all_text)
         post_response_handler.handler(chat_id, chat_record_id, paragraph_list, problem_text,
                                       all_text, manage, step, padding_problem_text, client_id)
-        add_access_num(client_id, client_type)
+        add_access_num(client_id, client_type, manage.context.get('application_id'))
         yield manage.get_base_to_response().to_stream_chunk_response(chat_id, str(chat_record_id), all_text,
                                                                      'ai-chat-node',
                                                                      [], True, 0, 0,
@@ -170,7 +173,8 @@ class BaseChatStep(IChatStep):
             return iter(
                 [AIMessageChunk(content=no_references_setting.get('value').replace('{question}', problem_text))]), False
         if chat_model is None:
-            return iter([AIMessageChunk('抱歉，没有配置 AI 模型，无法优化引用分段，请先去应用中设置 AI 模型。')]), False
+            return iter([AIMessageChunk(
+                _('Sorry, the AI model is not configured. Please go to the application to set up the AI model first.'))]), False
         else:
             return chat_model.stream(message_list), True
 
@@ -214,7 +218,7 @@ class BaseChatStep(IChatStep):
                 'status') == 'designated_answer':
             return AIMessage(no_references_setting.get('value').replace('{question}', problem_text)), False
         if chat_model is None:
-            return AIMessage('抱歉，没有配置 AI 模型，无法优化引用分段，请先去应用中设置 AI 模型。'), False
+            return AIMessage(_('Sorry, the AI model is not configured. Please go to the application to set up the AI model first.')), False
         else:
             return chat_model.invoke(message_list), True
 
@@ -241,7 +245,7 @@ class BaseChatStep(IChatStep):
             write_context(self, manage, request_token, response_token, chat_result.content)
             post_response_handler.handler(chat_id, chat_record_id, paragraph_list, problem_text,
                                           chat_result.content, manage, self, padding_problem_text, client_id)
-            add_access_num(client_id, client_type)
+            add_access_num(client_id, client_type, manage.context.get('application_id'))
             return manage.get_base_to_response().to_block_response(str(chat_id), str(chat_record_id),
                                                                    chat_result.content, True,
                                                                    request_token, response_token)
@@ -250,6 +254,6 @@ class BaseChatStep(IChatStep):
             write_context(self, manage, 0, 0, all_text)
             post_response_handler.handler(chat_id, chat_record_id, paragraph_list, problem_text,
                                           all_text, manage, self, padding_problem_text, client_id)
-            add_access_num(client_id, client_type)
+            add_access_num(client_id, client_type, manage.context.get('application_id'))
             return manage.get_base_to_response().to_block_response(str(chat_id), str(chat_record_id), all_text, True, 0,
                                                                    0, _status=status.HTTP_500_INTERNAL_SERVER_ERROR)

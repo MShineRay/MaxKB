@@ -3,9 +3,10 @@ from typing import Dict
 import dashscope
 from dashscope.audio.tts_v2 import *
 
+from common.util.common import _remove_empty_lines
 from setting.models_provider.base_model_provider import MaxKBBaseModel
 from setting.models_provider.impl.base_tts import BaseTextToSpeech
-
+from django.utils.translation import gettext_lazy as _
 
 class AliyunBaiLianTextToSpeech(MaxKBBaseModel, BaseTextToSpeech):
     api_key: str
@@ -32,11 +33,12 @@ class AliyunBaiLianTextToSpeech(MaxKBBaseModel, BaseTextToSpeech):
         )
 
     def check_auth(self):
-        self.text_to_speech('你好')
+        self.text_to_speech(_('Hello'))
 
     def text_to_speech(self, text):
         dashscope.api_key = self.api_key
         synthesizer = SpeechSynthesizer(model=self.model, **self.params)
+        text = _remove_empty_lines(text)
         audio = synthesizer.call(text)
         if type(audio) == str:
             print(audio)

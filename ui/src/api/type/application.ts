@@ -21,6 +21,8 @@ interface ApplicationFormType {
   stt_model_enable?: boolean
   tts_model_enable?: boolean
   tts_type?: string
+  tts_autoplay?: boolean
+  stt_autosend?: boolean
 }
 interface Chunk {
   real_node_id: string
@@ -121,12 +123,11 @@ export class ChatRecordManage {
 
     this.chat.answer_text = this.chat.answer_text + chunk_answer
   }
-  get_current_up_node() {
-    for (let i = this.node_list.length - 2; i >= 0; i--) {
-      const n = this.node_list[i]
-      if (n.content.length > 0) {
-        return n
-      }
+  get_current_up_node(run_node: any) {
+    const index = this.node_list.findIndex((item) => item == run_node)
+    if (index > 0) {
+      const n = this.node_list[index - 1]
+      return n
     }
     return undefined
   }
@@ -144,14 +145,13 @@ export class ChatRecordManage {
       const index = this.node_list.indexOf(run_node)
       let current_up_node = undefined
       if (index > 0) {
-        current_up_node = this.get_current_up_node()
+        current_up_node = this.get_current_up_node(run_node)
       }
       let answer_text_list_index = 0
-
       if (
         current_up_node == undefined ||
         run_node.view_type == 'single_view' ||
-        (run_node.view_type == 'many_view' && current_up_node.view_type == 'single_view')
+        current_up_node.view_type == 'single_view'
       ) {
         const none_index = this.findIndex(
           this.chat.answer_text_list,

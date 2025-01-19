@@ -175,21 +175,25 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import Recorder from 'recorder-core'
 import applicationApi from '@/api/application'
 import { MsgAlert } from '@/utils/message'
 import { type chatType } from '@/api/type/application'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { getImgUrl } from '@/utils/utils'
+import bus from '@/bus'
 import 'recorder-core/src/engine/mp3'
 
 import 'recorder-core/src/engine/mp3-engine'
 import { MsgWarning } from '@/utils/message'
-
+import useStore from '@/stores'
+const router = useRouter()
 const route = useRoute()
+const { application } = useStore()
 const {
-  query: { mode }
+  query: { mode, question },
+  params: { accessToken }
 } = route as any
 const quickInputRef = ref()
 const props = withDefaults(
@@ -251,7 +255,7 @@ const getAcceptList = () => {
   if (video) {
     accepts = [...accepts, ...videoExtensions]
   }
-  // console.log(accepts)
+
   if (accepts.length === 0) {
     return '.请在文件上传配置中选择文件类型'
   }
@@ -392,13 +396,13 @@ const startRecording = async () => {
       },
       (err: any) => {
         MsgAlert(
-          `提示`,
+          t('common.tip'),
           `<p>该功能需要使用麦克风，浏览器禁止不安全页面录音，解决方案如下：<br/>
 1、可开启 https 解决；<br/>
 2、若无 https 配置则需要修改浏览器安全配置，Chrome 设置如下：<br/>
 (1) 地址栏输入chrome://flags/#unsafely-treat-insecure-origin-as-secure；<br/>
 (2) 将 http 站点配置在文本框中，例如: http://127.0.0.1:8080。</p>
-    <img src="${new URL(`../../assets/tipIMG.jpg`, import.meta.url).href}" style="width: 100%;" />`,
+    <img src="${new URL(`@/assets/tipIMG.jpg`, import.meta.url).href}" style="width: 100%;" />`,
           {
             confirmButtonText: '我知道了',
             dangerouslyUseHTMLString: true,
@@ -409,13 +413,13 @@ const startRecording = async () => {
     )
   } catch (error) {
     MsgAlert(
-      `提示`,
+      t('common.tip'),
       `<p>该功能需要使用麦克风，浏览器禁止不安全页面录音，解决方案如下：<br/>
 1、可开启 https 解决；<br/>
 2、若无 https 配置则需要修改浏览器安全配置，Chrome 设置如下：<br/>
 (1) 地址栏输入chrome://flags/#unsafely-treat-insecure-origin-as-secure；<br/>
 (2) 将 http 站点配置在文本框中，例如: http://127.0.0.1:8080。</p>
-    <img src="${new URL(`../../assets/tipIMG.jpg`, import.meta.url).href}" style="width: 100%;" />`,
+    <img src="${new URL(`@/assets/tipIMG.jpg`, import.meta.url).href}" style="width: 100%;" />`,
       {
         confirmButtonText: '我知道了',
         dangerouslyUseHTMLString: true,
@@ -459,7 +463,12 @@ const uploadRecording = async (audioBlob: Blob) => {
         recorderLoading.value = false
         mediaRecorder.value.close()
         inputValue.value = typeof response.data === 'string' ? response.data : ''
-        // chatMessage(null, res.data)
+        // 自动发送
+        if (props.applicationDetails.stt_autosend) {
+          nextTick(() => {
+            autoSendMessage()
+          })
+        }
       })
   } catch (error) {
     recorderLoading.value = false
@@ -483,24 +492,28 @@ const handleTimeChange = () => {
   }, 1000)
 }
 
-function sendChatHandle(event: any) {
-  if (!event.ctrlKey) {
+function autoSendMessage() {
+  props.sendMessage(inputValue.value, {
+    image_list: uploadImageList.value,
+    document_list: uploadDocumentList.value,
+    audio_list: uploadAudioList.value,
+    video_list: uploadVideoList.value
+  })
+  inputValue.value = ''
+  uploadImageList.value = []
+  uploadDocumentList.value = []
+  uploadAudioList.value = []
+  uploadVideoList.value = []
+  quickInputRef.value.textareaStyle.height = '45px'
+}
+
+function sendChatHandle(event?: any) {
+  if (!event?.ctrlKey) {
     // 如果没有按下组合键ctrl，则会阻止默认事件
-    event.preventDefault()
-    if (!isDisabledChart.value && !props.loading && !event.isComposing) {
+    event?.preventDefault()
+    if (!isDisabledChart.value && !props.loading && !event?.isComposing) {
       if (inputValue.value.trim()) {
-        props.sendMessage(inputValue.value, {
-          image_list: uploadImageList.value,
-          document_list: uploadDocumentList.value,
-          audio_list: uploadAudioList.value,
-          video_list: uploadVideoList.value
-        })
-        inputValue.value = ''
-        uploadImageList.value = []
-        uploadDocumentList.value = []
-        uploadAudioList.value = []
-        uploadVideoList.value = []
-        quickInputRef.value.textareaStyle.height = '45px'
+        autoSendMessage()
       }
     }
   } else {
@@ -530,6 +543,31 @@ function mouseleave() {
 }
 
 onMounted(() => {
+  bus.on('chat-input', (message: string) => {
+    inputValue.value = message
+  })
+  if (question) {
+    inputValue.value = decodeURIComponent(question.trim())
+    sendChatHandle()
+    setTimeout(() => {
+      // 获取当前路由信息
+      const route = router.currentRoute.value
+      // 复制query对象
+      const query = { ...route.query }
+      // 删除特定的参数
+      delete query.question
+      const newRoute =
+        Object.entries(query)?.length > 0
+          ? route.path +
+            '?' +
+            Object.entries(query)
+              .map(([key, value]) => `${key}=${value}`)
+              .join('&')
+          : route.path
+
+      history.pushState(null, '', '/ui' + newRoute)
+    }, 100)
+  }
   setTimeout(() => {
     if (quickInputRef.value && mode === 'embed') {
       quickInputRef.value.textarea.style.height = '0'

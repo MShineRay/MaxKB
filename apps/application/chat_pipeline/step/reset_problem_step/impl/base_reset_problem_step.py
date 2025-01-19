@@ -14,9 +14,10 @@ from application.chat_pipeline.step.reset_problem_step.i_reset_problem_step impo
 from application.models import ChatRecord
 from common.util.split_model import flat_map
 from setting.models_provider.tools import get_model_instance_by_model_user_id
+from django.utils.translation import gettext_lazy as _
 
-prompt = (
-    '()里面是用户问题,根据上下文回答揣测用户问题({question}) 要求: 输出一个补全问题,并且放在<data></data>标签中')
+prompt = _(
+    "() contains the user's question. Answer the guessed user's question based on the context ({question}) Requirement: Output a complete question and put it in the <data></data> tag")
 
 
 class BaseResetProblemStep(IResetProblemStep):
@@ -25,6 +26,8 @@ class BaseResetProblemStep(IResetProblemStep):
                 user_id=None,
                 **kwargs) -> str:
         chat_model = get_model_instance_by_model_user_id(model_id, user_id) if model_id is not None else None
+        if chat_model is None:
+            return problem_text
         start_index = len(history_chat_record) - 3
         history_message = [[history_chat_record[index].get_human_message(), history_chat_record[index].get_ai_message()]
                            for index in
@@ -57,8 +60,8 @@ class BaseResetProblemStep(IResetProblemStep):
             'step_type': 'problem_padding',
             'run_time': self.context['run_time'],
             'model_id': str(manage.context['model_id']) if 'model_id' in manage.context else None,
-            'message_tokens': self.context['message_tokens'],
-            'answer_tokens': self.context['answer_tokens'],
+            'message_tokens': self.context.get('message_tokens', 0),
+            'answer_tokens': self.context.get('answer_tokens', 0),
             'cost': 0,
             'padding_problem_text': self.context.get('padding_problem_text'),
             'problem_text': self.context.get("step_args").get('problem_text'),

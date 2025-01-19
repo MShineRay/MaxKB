@@ -21,6 +21,7 @@ from docx.text.paragraph import Paragraph
 from common.handle.base_split_handle import BaseSplitHandle
 from common.util.split_model import SplitModel
 from dataset.models import Image
+from django.utils.translation import gettext_lazy as _
 
 default_pattern_list = [re.compile('(?<=^)# .*|(?<=\\n)# .*'),
                         re.compile('(?<=\\n)(?<!#)## (?!#).*|(?<=^)(?<!#)## (?!#).*'),
@@ -113,8 +114,10 @@ class DocSplitHandle(BaseSplitHandle):
     def paragraph_to_md(paragraph: Paragraph, doc: Document, images_list, get_image_id):
         try:
             psn = paragraph.style.name
-            if psn.startswith('Heading'):
-                title = "".join(["#" for i in range(int(psn.replace("Heading ", '')))]) + " " + paragraph.text
+            if psn.startswith('Heading') or psn.startswith('TOC 标题') or psn.startswith('标题'):
+                title = "".join(["#" for i in range(
+                    int(psn.replace("Heading ", '').replace('TOC 标题', '').replace('标题',
+                                                                                    '')))]) + " " + paragraph.text
                 images = reduce(lambda x, y: [*x, *y],
                                 [get_paragraph_element_images(e, doc, images_list, get_image_id) for e in
                                  paragraph._element],

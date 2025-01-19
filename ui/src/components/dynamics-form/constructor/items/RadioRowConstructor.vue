@@ -47,11 +47,15 @@
     </el-row>
   </el-form-item>
   <el-form-item
-    label="默认值"
+    class="defaultValueItem"
+    :label="$t('components.dynamicsForm.default.label')"
     :required="formValue.required"
     prop="default_value"
     :rules="formValue.required ? [{ required: true, message: '默认值 为必填属性' }] : []"
   >
+    <div class="defaultValueCheckbox">
+      <el-checkbox v-model="formValue.show_default_value" label="显示默认值" />
+    </div>
     <RadioRow
       :form-field="formField"
       v-model="formValue.default_value"
@@ -111,11 +115,21 @@ defineExpose({ getData, rander })
 onMounted(() => {
   formValue.value.option_list = []
   formValue.value.default_value = ''
-
+  if (formValue.value.show_default_value === undefined) {
+    formValue.value.show_default_value = true
+  }
   addOption()
 })
 </script>
 <style lang="scss" scoped>
+.defaultValueItem {
+  position: relative;
+  .defaultValueCheckbox {
+    position: absolute;
+    right: 0;
+    top: -35px;
+  }
+}
 :deep(.el-form-item__label) {
   display: block;
 }

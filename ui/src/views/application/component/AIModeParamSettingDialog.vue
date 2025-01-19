@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     align-center
-    :title="$t('views.application.applicationForm.dialogues.paramSettings')"
+    :title="$t('common.paramSetting')"
     class="aiMode-param-dialog"
     v-model="dialogVisible"
     style="width: 550px"
@@ -22,10 +22,10 @@
     <template #footer>
       <span class="dialog-footer p-16">
         <el-button @click.prevent="dialogVisible = false">
-          {{ $t('views.application.applicationForm.buttons.cancel') }}
+          {{ $t('common.cancel') }}
         </el-button>
         <el-button type="primary" @click="submit" :loading="loading">
-          {{ $t('views.application.applicationForm.buttons.confirm') }}
+          {{ $t('common.confirm') }}
         </el-button>
       </span>
     </template>
@@ -38,7 +38,6 @@ import type { FormField } from '@/components/dynamics-form/type'
 import modelAPi from '@/api/model'
 import applicationApi from '@/api/application'
 import DynamicsForm from '@/components/dynamics-form/index.vue'
-import { keys } from 'lodash'
 const model_form_field = ref<Array<FormField>>([])
 const emit = defineEmits(['refresh'])
 const dynamicsFormRef = ref<InstanceType<typeof DynamicsForm>>()
@@ -55,12 +54,6 @@ const open = (model_id: string, application_id?: string, model_setting_data?: an
   const api = getApi(model_id, application_id)
   api.then((ok) => {
     model_form_field.value = ok.data
-    model_setting_data =
-      model_setting_data && keys(model_setting_data).length > 0
-        ? model_setting_data
-        : ok.data
-            .map((item: any) => ({ [item.field]: item.default_value }))
-            .reduce((x, y) => ({ ...x, ...y }), {})
     // 渲染动态表单
     dynamicsFormRef.value?.render(model_form_field.value, model_setting_data)
   })
@@ -72,7 +65,13 @@ const reset_default = (model_id: string, application_id?: string) => {
   api.then((ok) => {
     model_form_field.value = ok.data
     const model_setting_data = ok.data
-      .map((item) => ({ [item.field]: item.default_value }))
+      .map((item) => {
+        if (item.show_default_value === false) {
+          return { [item.field]: undefined }
+        } else {
+          return { [item.field]: item.default_value }
+        }
+      })
       .reduce((x, y) => ({ ...x, ...y }), {})
 
     emit('refresh', model_setting_data)

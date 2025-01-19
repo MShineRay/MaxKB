@@ -47,28 +47,31 @@
       </template>
     </el-table-column>
 
-    <el-table-column prop="default_value" label="默认值">
+    <el-table-column
+      prop="default_value"
+      :label="$t('components.dynamicsForm.default.label')"
+    >
       <template #default="{ row }">
         <span :title="row.default_value" class="ellipsis-1">{{ getDefaultValue(row) }}</span>
       </template>
     </el-table-column>
-    <el-table-column label="必填">
+    <el-table-column :label="$t('common.required')">
       <template #default="{ row }">
         <div @click.stop>
           <el-switch disabled size="small" v-model="row.required" />
         </div>
       </template>
     </el-table-column>
-    <el-table-column label="操作" align="left" width="80">
+    <el-table-column :label="$t('common.operation')" align="left" width="80">
       <template #default="{ row, $index }">
         <span class="mr-4">
-          <el-tooltip effect="dark" content="修改" placement="top">
+          <el-tooltip effect="dark" :content="$t('common.modify')" placement="top">
             <el-button type="primary" text @click.stop="openAddDialog(row, $index)">
               <el-icon><EditPen /></el-icon>
             </el-button>
           </el-tooltip>
         </span>
-        <el-tooltip effect="dark" content="删除" placement="top">
+        <el-tooltip effect="dark" :content="$t('common.delete')" placement="top">
           <el-button type="primary" text @click="deleteField($index)">
             <el-icon>
               <Delete />
@@ -128,15 +131,19 @@ function refreshFieldList(data: any, index: any) {
 
 const getDefaultValue = (row: any) => {
   if (row.default_value) {
-    const default_value = row.option_list?.filter((v: any) => row.default_value.indexOf(v.value) > -1)
-      .map((v: any) => v.label).join(',')
+    const default_value = row.option_list
+      ?.filter((v: any) => row.default_value.indexOf(v.value) > -1)
+      .map((v: any) => v.label)
+      .join(',')
     if (default_value) {
       return default_value
     }
     return row.default_value
   }
+  if (row.default_value !== undefined) {
+    return row.default_value
+  }
 }
-
 
 onMounted(() => {
   if (!props.nodeModel.properties.user_input_field_list) {

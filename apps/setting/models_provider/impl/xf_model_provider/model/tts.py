@@ -18,8 +18,10 @@ from urllib.parse import urlencode, urlparse
 import ssl
 import websockets
 
+from common.util.common import _remove_empty_lines
 from setting.models_provider.base_model_provider import MaxKBBaseModel
 from setting.models_provider.impl.base_tts import BaseTextToSpeech
+from django.utils.translation import gettext_lazy as _
 
 max_kb = logging.getLogger("max_kb")
 
@@ -96,12 +98,14 @@ class XFSparkTextToSpeech(MaxKBBaseModel, BaseTextToSpeech):
         return url
 
     def check_auth(self):
-        self.text_to_speech("你好")
+        self.text_to_speech(_('Hello'))
 
     def text_to_speech(self, text):
 
         # 使用小语种须使用以下方式，此处的unicode指的是 utf16小端的编码方式，即"UTF-16LE"”
         # self.Data = {"status": 2, "text": str(base64.b64encode(self.Text.encode('utf-16')), "UTF8")}
+        text = _remove_empty_lines(text)
+
         async def handle():
             async with websockets.connect(self.create_url(), max_size=1000000000, ssl=ssl_context) as ws:
                 # 发送 full client request

@@ -71,11 +71,18 @@
                 </el-button>
               </div>
               <div>
-                <el-button :disabled="!accessToken?.is_active" type="primary">
-                  <a v-if="accessToken?.is_active" :href="shareUrl" target="_blank">
-                    {{ $t('views.applicationOverview.appInfo.demo') }}
-                  </a>
-                  <span v-else> {{ $t('views.applicationOverview.appInfo.demo') }}</span>
+                <el-button
+                  v-if="accessToken?.is_active"
+                  :disabled="!accessToken?.is_active"
+                  type="primary"
+                  tag="a"
+                  :href="shareUrl"
+                  target="_blank"
+                >
+                  {{ $t('views.applicationOverview.appInfo.demo') }}
+                </el-button>
+                <el-button v-else :disabled="!accessToken?.is_active" type="primary">
+                  {{ $t('views.applicationOverview.appInfo.demo') }}
                 </el-button>
                 <el-button :disabled="!accessToken?.is_active" @click="openDialog">
                   {{ $t('views.applicationOverview.appInfo.embedThirdParty') }}
@@ -96,7 +103,7 @@
               </div>
               <div class="mt-4 mb-16 url-height">
                 <div>
-                  <el-text>API 文档：</el-text
+                  <el-text>API {{ $t('common.document') }}：</el-text
                   ><el-button
                     type="primary"
                     link
@@ -267,7 +274,7 @@ function openDisplaySettingDialog() {
   if (user.isEnterprise()) {
     XPackDisplaySettingDialogRef.value?.open(accessToken.value, detail.value)
   } else {
-    DisplaySettingDialogRef.value?.open(accessToken.value)
+    DisplaySettingDialogRef.value?.open(accessToken.value, detail.value)
   }
 }
 function openEditAvatar() {
@@ -299,8 +306,8 @@ function refreshAccessToken() {
     t('views.applicationOverview.appInfo.refreshToken.msgConfirm1'),
     t('views.applicationOverview.appInfo.refreshToken.msgConfirm2'),
     {
-      confirmButtonText: t('views.applicationOverview.appInfo.refreshToken.confirm'),
-      cancelButtonText: t('views.applicationOverview.appInfo.refreshToken.cancel')
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel')
     }
   )
     .then(() => {
@@ -318,8 +325,8 @@ function changeState(bool: Boolean) {
     is_active: bool
   }
   const str = bool
-    ? t('views.applicationOverview.appInfo.changeState.enableSuccess')
-    : t('views.applicationOverview.appInfo.changeState.disableSuccess')
+    ? t('common.status.enableSuccess')
+    : t('common.status.disableSuccess')
   updateAccessToken(obj, str)
 }
 
@@ -353,23 +360,22 @@ function getDetail() {
       ?.filter((v: any) => v.id === 'base-node')
       .map((v: any) => {
         apiInputParams.value = v.properties.api_input_field_list
-          ? v.properties.api_input_field_list
-              .map((v: any) => {
-                return {
-                  name: v.variable,
-                  value: v.default_value
-                }
-              })
+          ? v.properties.api_input_field_list.map((v: any) => {
+              return {
+                name: v.variable,
+                value: v.default_value
+              }
+            })
           : v.properties.input_field_list
-          ? v.properties.input_field_list
-              .filter((v: any) => v.assignment_method === 'api_input')
-              .map((v: any) => {
-                return {
-                  name: v.variable,
-                  value: v.default_value
-                }
-              })
-          : []
+            ? v.properties.input_field_list
+                .filter((v: any) => v.assignment_method === 'api_input')
+                .map((v: any) => {
+                  return {
+                    name: v.variable,
+                    value: v.default_value
+                  }
+                })
+            : []
       })
   })
 }

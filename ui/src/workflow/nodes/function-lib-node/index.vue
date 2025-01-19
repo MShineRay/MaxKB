@@ -48,7 +48,7 @@
           </template>
         </div>
 
-        <el-text type="info" v-else> 暂无数据 </el-text>
+        <el-text type="info" v-else> {{ $t('common.noData') }} </el-text>
       </el-card>
       <el-form-item label="返回内容" @click.prevent>
         <template #label>
@@ -112,6 +112,10 @@ const validate = () => {
 }
 
 const update_field = () => {
+  if (!props.nodeModel.properties.node_data.function_lib_id) {
+    set(props.nodeModel.properties, 'status', 500)
+    return
+  }
   applicationApi
     .getFunctionLib(id, props.nodeModel.properties.node_data.function_lib_id)
     .then((ok) => {

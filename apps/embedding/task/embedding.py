@@ -20,13 +20,17 @@ from dataset.models import Document, TaskType, State
 from ops import celery_app
 from setting.models import Model
 from setting.models_provider import get_model
+from django.utils.translation import gettext_lazy as _
 
 max_kb_error = logging.getLogger("max_kb_error")
 max_kb = logging.getLogger("max_kb")
 
 
 def get_embedding_model(model_id, exception_handler=lambda e: max_kb_error.error(
-    f'获取向量模型失败：{str(e)}{traceback.format_exc()}')):
+    _('Failed to obtain vector model: {error} {traceback}').format(
+        error=str(e),
+        traceback=traceback.format_exc()
+    ))):
     try:
         model = QuerySet(Model).filter(id=model_id).first()
         embedding_model = ModelManage.get_model(model_id,
@@ -56,22 +60,31 @@ def embedding_by_paragraph_list(paragraph_id_list, model_id):
 
 
 @celery_app.task(base=QueueOnce, once={'keys': ['document_id']}, name='celery:embedding_by_document')
-def embedding_by_document(document_id, model_id):
+def embedding_by_document(document_id, model_id, state_list=None):
     """
     向量化文档
+    @param state_list:
     @param document_id: 文档id
     @param model_id 向量模型
     :return: None
     """
 
+    if state_list is None:
+        state_list = [State.PENDING.value, State.STARTED.value, State.SUCCESS.value, State.FAILURE.value,
+                      State.REVOKE.value,
+                      State.REVOKED.value, State.IGNORED.value]
+
     def exception_handler(e):
         ListenerManagement.update_status(QuerySet(Document).filter(id=document_id), TaskType.EMBEDDING,
                                          State.FAILURE)
         max_kb_error.error(
-            f'获取向量模型失败：{str(e)}{traceback.format_exc()}')
+            _('Failed to obtain vector model: {error} {traceback}').format(
+                error=str(e),
+                traceback=traceback.format_exc()
+            ))
 
     embedding_model = get_embedding_model(model_id, exception_handler)
-    ListenerManagement.embedding_by_document(document_id, embedding_model)
+    ListenerManagement.embedding_by_document(document_id, embedding_model, state_list)
 
 
 @celery_app.task(name='celery:embedding_by_document_list')
@@ -94,20 +107,24 @@ def embedding_by_dataset(dataset_id, model_id):
           @param model_id 向量模型
           :return: None
           """
-    max_kb.info(f"开始--->向量化数据集:{dataset_id}")
+    max_kb.info(_('Start--->Vectorized dataset: {dataset_id}').format(dataset_id=dataset_id))
     try:
         ListenerManagement.delete_embedding_by_dataset(dataset_id)
         document_list = QuerySet(Document).filter(dataset_id=dataset_id)
-        max_kb.info(f"数据集文档:{[d.name for d in document_list]}")
+        max_kb.info(_('Dataset documentation: {document_names}').format(
+            document_names=", ".join([d.name for d in document_list])))
         for document in document_list:
             try:
                 embedding_by_document.delay(document.id, model_id)
             except Exception as e:
                 pass
     except Exception as e:
-        max_kb_error.error(f'向量化数据集:{dataset_id}出现错误{str(e)}{traceback.format_exc()}')
+        max_kb_error.error(
+            _('Vectorized dataset: {dataset_id} error {error} {traceback}'.format(dataset_id=dataset_id,
+                                                                                  error=str(e),
+                                                                                  traceback=traceback.format_exc())))
     finally:
-        max_kb.info(f"结束--->向量化数据集:{dataset_id}")
+        max_kb.info(_('End--->Vectorized dataset: {dataset_id}').format(dataset_id=dataset_id))
 
 
 def embedding_by_problem(args, model_id):

@@ -76,14 +76,15 @@
     </span>
   </div>
   <!-- 先渲染，不然不能播放   -->
-  <audio ref="audioPlayer" controls hidden="hidden"></audio>
+  <audio ref="audioPlayer" v-for="item in audioList" :key="item" controls hidden="hidden"></audio>
 </template>
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { copyClick } from '@/utils/clipboard'
 import applicationApi from '@/api/application'
 import { datetimeFormat } from '@/utils/time'
+import { MsgError } from '@/utils/message'
 
 const route = useRoute()
 const {
@@ -99,6 +100,7 @@ const props = withDefaults(
     applicationId: string
     tts: boolean
     tts_type: string
+    tts_autoplay: boolean
   }>(),
   {
     data: () => ({}),
@@ -108,11 +110,13 @@ const props = withDefaults(
 
 const emit = defineEmits(['update:data', 'regeneration'])
 
-const audioPlayer = ref<HTMLAudioElement | null>(null)
+const audioPlayer = ref<HTMLAudioElement[] | null>([])
 const audioPlayerStatus = ref(false)
 const buttonData = ref(props.data)
 const loading = ref(false)
 const utterance = ref<SpeechSynthesisUtterance | null>(null)
+const audioList = ref<string[]>([])
+const currentAudioIndex = ref(0)
 
 function regeneration() {
   emit('regeneration')
@@ -168,8 +172,29 @@ const playAnswerText = (text: string) => {
   text = markdownToPlainText(text)
   // console.log(text)
   audioPlayerStatus.value = true
-  if (props.tts_type === 'BROWSER') {
-    if (text !== utterance.value?.text) {
+  // 分割成多份
+  audioList.value = text.split(/(<audio[^>]*><\/audio>)/)
+  playAnswerTextPart()
+}
+
+const playAnswerTextPart = () => {
+  // console.log(audioList.value, currentAudioIndex.value)
+  if (currentAudioIndex.value === audioList.value.length) {
+    audioPlayerStatus.value = false
+    currentAudioIndex.value = 0
+    return
+  }
+  if (audioList.value[currentAudioIndex.value].includes('<audio')) {
+    if (audioPlayer.value) {
+      audioPlayer.value[currentAudioIndex.value].src = audioList.value[currentAudioIndex.value].match(/src="([^"]*)"/)?.[1] || ''
+      audioPlayer.value[currentAudioIndex.value].play() // 自动播放音频
+      audioPlayer.value[currentAudioIndex.value].onended = () => {
+        currentAudioIndex.value += 1
+        playAnswerTextPart()
+      }
+    }
+  } else if (props.tts_type === 'BROWSER') {
+    if (audioList.value[currentAudioIndex.value] !== utterance.value?.text) {
       window.speechSynthesis.cancel()
     }
     if (window.speechSynthesis.paused) {
@@ -177,10 +202,11 @@ const playAnswerText = (text: string) => {
       return
     }
     // 创建一个新的 SpeechSynthesisUtterance 实例
-    utterance.value = new SpeechSynthesisUtterance(text)
+    utterance.value = new SpeechSynthesisUtterance(audioList.value[currentAudioIndex.value])
     utterance.value.onend = () => {
-      audioPlayerStatus.value = false
       utterance.value = null
+      currentAudioIndex.value += 1
+      playAnswerTextPart()
     }
     utterance.value.onerror = () => {
       audioPlayerStatus.value = false
@@ -188,16 +214,20 @@ const playAnswerText = (text: string) => {
     }
     // 调用浏览器的朗读功能
     window.speechSynthesis.speak(utterance.value)
-  }
-  if (props.tts_type === 'TTS') {
+  } else if (props.tts_type === 'TTS') {
     // 恢复上次暂停的播放
-    if (audioPlayer.value?.src) {
-      audioPlayer.value?.play()
+    if (audioPlayer.value && audioPlayer.value[currentAudioIndex.value]?.src) {
+      audioPlayer.value[currentAudioIndex.value].play()
       return
     }
     applicationApi
-      .postTextToSpeech((props.applicationId as string) || (id as string), { text: text }, loading)
-      .then((res: any) => {
+      .postTextToSpeech((props.applicationId as string) || (id as string), { text: audioList.value[currentAudioIndex.value] }, loading)
+      .then(async (res: any) => {
+        if (res.type === 'application/json') {
+          const text = await res.text()
+          MsgError(text)
+          return
+        }
         // 假设我们有一个 MP3 文件的字节数组
         // 创建 Blob 对象
         const blob = new Blob([res], { type: 'audio/mp3' })
@@ -212,11 +242,12 @@ const playAnswerText = (text: string) => {
         // link.click()
 
         // 检查 audioPlayer 是否已经引用了 DOM 元素
-        if (audioPlayer.value instanceof HTMLAudioElement) {
-          audioPlayer.value.src = url
-          audioPlayer.value.play() // 自动播放音频
-          audioPlayer.value.onended = () => {
-            audioPlayerStatus.value = false
+        if (audioPlayer.value) {
+          audioPlayer.value[currentAudioIndex.value].src = url
+          audioPlayer.value[currentAudioIndex.value].play() // 自动播放音频
+          audioPlayer.value[currentAudioIndex.value].onended = () => {
+            currentAudioIndex.value += 1
+            playAnswerTextPart()
           }
         } else {
           console.error('audioPlayer.value is not an instance of HTMLAudioElement')
@@ -231,11 +262,22 @@ const playAnswerText = (text: string) => {
 const pausePlayAnswerText = () => {
   audioPlayerStatus.value = false
   if (props.tts_type === 'TTS') {
-    audioPlayer.value?.pause()
+    if (audioPlayer.value) {
+      audioPlayer.value?.forEach((item) => {
+        item.pause()
+      })
+    }
   }
   if (props.tts_type === 'BROWSER') {
     window.speechSynthesis.pause()
   }
 }
+
+onMounted(() => {
+  // 第一次回答后自动播放， 打开历史记录不自动播放
+  if (props.tts_autoplay && buttonData.value.write_ed && !buttonData.value.update_time) {
+    playAnswerText(buttonData.value.answer_text)
+  }
+})
 </script>
 <style lang="scss" scoped></style>

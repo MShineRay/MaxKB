@@ -57,8 +57,10 @@ class BaseTextToSpeechNode(ITextToSpeechNode):
         }
         file_url = FileSerializer(data={'file': file, 'meta': meta}).upload()
         # 拼接一个audio标签的src属性
-        audio_label = f'<audio src="{file_url}" controls style = "width: 300px; height: 43px" class ="border-r-4"/>'
-        return NodeResult({'answer': audio_label, 'result': audio_label}, {})
+        audio_label = f'<audio src="{file_url}" controls style = "width: 300px; height: 43px"></audio>'
+        file_id = file_url.split('/')[-1]
+        audio_list = [{'file_id': file_id, 'file_name': file_name, 'url': file_url}]
+        return NodeResult({'answer': audio_label, 'result': audio_list}, {})
 
     def get_details(self, index: int, **kwargs):
         return {

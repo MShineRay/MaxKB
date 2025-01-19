@@ -18,8 +18,10 @@ from typing import Dict
 import ssl
 import websockets
 
+from common.util.common import _remove_empty_lines
 from setting.models_provider.base_model_provider import MaxKBBaseModel
 from setting.models_provider.impl.base_tts import BaseTextToSpeech
+from django.utils.translation import gettext_lazy as _
 
 MESSAGE_TYPES = {11: "audio-only server response", 12: "frontend server response", 15: "error message from server"}
 MESSAGE_TYPE_SPECIFIC_FLAGS = {0: "no sequence number", 1: "sequence number > 0",
@@ -71,7 +73,7 @@ class VolcanicEngineTextToSpeech(MaxKBBaseModel, BaseTextToSpeech):
         )
 
     def check_auth(self):
-        self.text_to_speech('你好')
+        self.text_to_speech(_('Hello'))
 
     def text_to_speech(self, text):
         request_json = {
@@ -84,10 +86,10 @@ class VolcanicEngineTextToSpeech(MaxKBBaseModel, BaseTextToSpeech):
                 "uid": "uid"
             },
             "audio": {
-                "encoding": "mp3",
-                "volume_ratio": 1.0,
-                "pitch_ratio": 1.0,
-            } | self.params,
+                         "encoding": "mp3",
+                         "volume_ratio": 1.0,
+                         "pitch_ratio": 1.0,
+                     } | self.params,
             "request": {
                 "reqid": str(uuid.uuid4()),
                 "text": '',
@@ -95,6 +97,7 @@ class VolcanicEngineTextToSpeech(MaxKBBaseModel, BaseTextToSpeech):
                 "operation": "xxx"
             }
         }
+        text = _remove_empty_lines(text)
 
         return asyncio.run(self.submit(request_json, text))
 
@@ -111,7 +114,7 @@ class VolcanicEngineTextToSpeech(MaxKBBaseModel, BaseTextToSpeech):
         result = b''
         async with websockets.connect(self.volcanic_api_url, extra_headers=header, ping_interval=None,
                                       ssl=ssl_context) as ws:
-            lines = text.split('\n')
+            lines = [text[i:i + 200] for i in range(0, len(text), 200)]
             for line in lines:
                 if self.is_table_format_chars_only(line):
                     continue

@@ -2,14 +2,18 @@
   <div v-show="show" class="workflow-dropdown-menu border border-r-4">
     <el-tabs v-model="activeName" class="workflow-dropdown-tabs">
       <div style="display: flex; width: 100%; justify-content: center" class="mb-4">
-        <el-input v-model="search_text" style="width: 240px" placeholder="按名称搜索">
+        <el-input
+          v-model="search_text"
+          style="width: 240px"
+          :placeholder="$t('views.applicationWorkflow.searchBar.placeholder')"
+        >
           <template #suffix>
             <el-icon class="el-input__icon"><search /></el-icon>
           </template>
         </el-input>
       </div>
 
-      <el-tab-pane label="基础组件" name="base">
+      <el-tab-pane :label="$t('views.applicationWorkflow.baseComponent')" name="base">
         <el-scrollbar height="400">
           <div v-if="filter_menu_nodes.length > 0">
             <template v-for="(item, index) in filter_menu_nodes" :key="index">
@@ -27,11 +31,11 @@
             </template>
           </div>
           <div v-else class="ml-16 mt-8">
-            <el-text type="info">没有找到相关结果</el-text>
+            <el-text type="info">{{ $t('views.applicationWorkflow.tip.noData') }}</el-text>
           </div>
         </el-scrollbar>
       </el-tab-pane>
-      <el-tab-pane label="函数库" name="function">
+      <el-tab-pane :label="$t('views.functionLib.title')" name="function">
         <el-scrollbar height="400">
           <div
             class="workflow-dropdown-item cursor flex p-8-12"
@@ -47,35 +51,40 @@
 
           <template v-for="(item, index) in filter_function_lib_list" :key="index">
             <div
-              class="workflow-dropdown-item cursor flex p-8-12"
+              class="workflow-dropdown-item cursor flex p-8-12 align-center"
               @click.stop="clickNodes(functionLibNode, item, 'function')"
-              @mousedown.stop="onmousedown(functionLibNode, item)"
+              @mousedown.stop="onmousedown(functionLibNode, item, 'function')"
             >
-              <component
-                :is="iconComponent(`function-lib-node-icon`)"
-                class="mr-8 mt-4"
-                :size="32"
-              />
+              <component :is="iconComponent(`function-lib-node-icon`)" class="mr-8" :size="32" />
               <div class="pre-wrap">
-                <div class="lighter">{{ item.name }}</div>
-                <el-text type="info" size="small">{{ item.desc }}</el-text>
+                <div class="lighter ellipsis-1" :title="item.name">{{ item.name }}</div>
+                <p>
+                  <el-text
+                    class="ellipsis-1"
+                    type="info"
+                    size="small"
+                    :title="item.desc"
+                    v-if="item.desc"
+                    >{{ item.desc }}</el-text
+                  >
+                </p>
               </div>
             </div>
           </template>
         </el-scrollbar>
       </el-tab-pane>
-      <el-tab-pane label="应用" name="application">
+      <el-tab-pane :label="$t('views.application.title')" name="application">
         <el-scrollbar height="400">
           <div v-if="filter_application_list.length > 0">
             <template v-for="(item, index) in filter_application_list" :key="index">
               <div
-                class="workflow-dropdown-item cursor flex p-8-12"
+                class="workflow-dropdown-item cursor flex align-center p-8-12"
                 @click.stop="clickNodes(applicationNode, item, 'application')"
                 @mousedown.stop="onmousedown(applicationNode, item, 'application')"
               >
                 <component
                   :is="iconComponent(`application-node-icon`)"
-                  class="mr-8 mt-4"
+                  class="mr-8"
                   :size="32"
                   :item="item"
                 />
@@ -83,19 +92,30 @@
                   <div class="lighter ellipsis" :title="item.name">
                     {{ item.name }}
                   </div>
-                  <el-text type="info" size="small" style="width: 80%">{{ item.desc }}</el-text>
+                  <p>
+                    <el-text
+                      class="ellipsis"
+                      type="info"
+                      size="small"
+                      :title="item.desc"
+                      v-if="item.desc"
+                      >{{ item.desc }}</el-text
+                    >
+                  </p>
                 </div>
                 <div class="status-tag" style="margin-left: auto">
-                  <el-tag type="warning" v-if="isWorkFlow(item.type)" style="height: 22px"
-                    >高级编排</el-tag
+                  <el-tag type="warning" v-if="isWorkFlow(item.type)" style="height: 22px">
+                    {{ $t('views.application.workflow') }}</el-tag
                   >
-                  <el-tag class="blue-tag" v-else style="height: 22px">简单配置</el-tag>
+                  <el-tag class="blue-tag" v-else style="height: 22px">{{
+                    $t('views.application.simple')
+                  }}</el-tag>
                 </div>
               </div>
             </template>
           </div>
           <div v-else class="ml-16 mt-8">
-            <el-text type="info">没有找到相关结果</el-text>
+            <el-text type="info">{{ $t('views.applicationWorkflow.tip.noData') }}</el-text>
           </div>
         </el-scrollbar>
       </el-tab-pane>
@@ -256,7 +276,7 @@ onMounted(() => {
   user-select: none; /* CSS3属性 */
   position: absolute;
   top: 49px;
-  right: 90px;
+  right: 122px;
   z-index: 99;
   width: 268px;
   box-shadow: 0px 4px 8px 0px var(--app-text-color-light-1);

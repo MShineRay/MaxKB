@@ -26,16 +26,15 @@
     </el-select>
   </el-form-item>
   <el-form-item
+    class="defaultValueItem"
     :required="formValue.required"
     prop="default_value"
+    :label="$t('components.dynamicsForm.default.label')"
     :rules="formValue.required ? [{ required: true, message: '默认值 为必填属性' }] : []"
   >
-    <template #label>
-      <div class="flex-between">
-        默认值
-        <el-checkbox v-model="formValue.show_default_value" label="显示默认值" />
-      </div>
-    </template>
+    <div class="defaultValueCheckbox">
+      <el-checkbox v-model="formValue.show_default_value" label="显示默认值" />
+    </div>
     <el-date-picker
       v-model="formValue.default_value"
       :type="formValue.type"
@@ -97,21 +96,31 @@ const getData = () => {
       'value-format': formValue.value.format
     },
     default_value: formValue.value.default_value,
-    show_default_value: formValue.value.show_default_value,
+    show_default_value: formValue.value.show_default_value
   }
 }
 const rander = (form_data: any) => {
   formValue.value.type = form_data.attrs.type
   formValue.value.format = form_data.attrs?.format
   formValue.value.default_value = form_data.default_value || ''
-  formValue.value.show_default_value = form_data.show_default_value
 }
 defineExpose({ getData, rander })
 onBeforeMount(() => {
   formValue.value.type = 'datetime'
   formValue.value.format = 'YYYY-MM-DD HH:mm:ss'
   formValue.value.default_value = ''
-  formValue.value.show_default_value = true
+  if (formValue.value.show_default_value === undefined) {
+    formValue.value.show_default_value = true
+  }
 })
 </script>
-<style lang="scss"></style>
+<style lang="scss" scoped>
+.defaultValueItem {
+  position: relative;
+  .defaultValueCheckbox {
+    position: absolute;
+    right: 0;
+    top: -35px;
+  }
+}
+</style>

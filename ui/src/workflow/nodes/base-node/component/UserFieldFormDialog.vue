@@ -1,6 +1,10 @@
 <template>
   <el-dialog
-    :title="isEdit ? '编辑参数' : '添加参数'"
+    :title="
+      isEdit
+        ? $t('views.template.templateForm.title.editParam')
+        : $t('views.template.templateForm.title.addParam')
+    "
     v-model="dialogVisible"
     :close-on-click-modal="false"
     :close-on-press-escape="false"
@@ -17,9 +21,9 @@
     ></DynamicsFormConstructor>
     <template #footer>
       <span class="dialog-footer">
-        <el-button @click.prevent="close"> 取消 </el-button>
+        <el-button @click.prevent="close"> {{ $t('common.cancel') }} </el-button>
         <el-button type="primary" @click="submit()" :loading="loading">
-          {{ isEdit ? '保存' : '添加' }}
+          {{ isEdit ? $t('common.save') : $t('common.add') }}
         </el-button>
       </span>
     </template>
@@ -72,9 +76,11 @@ const currentRow = computed(() => {
           label: row.label || row.name,
           default_value: row.default_value,
           required: row.required != undefined ? row.required : row.is_required,
-          option_list: row.option_list ? row.option_list: row.optionList.map((o: any) => {
-            return { key: o, value: o }
-          })
+          option_list: row.option_list
+            ? row.option_list
+            : row.optionList.map((o: any) => {
+                return { key: o, value: o }
+              })
         }
 
       case 'date':
@@ -110,7 +116,7 @@ const currentRow = computed(() => {
         return currentItem.value
     }
   } else {
-    return { input_type: 'TextInput', required: true, attrs: { maxlength: 20, minlength: 0 } }
+    return { input_type: 'TextInput', required: false, attrs: { maxlength: 20, minlength: 0 } }
   }
 })
 const currentIndex = ref(null)

@@ -46,16 +46,15 @@
     </el-row>
   </el-form-item>
   <el-form-item
+    class="defaultValueItem"
+    :label="$t('components.dynamicsForm.default.label')"
     :required="formValue.required"
     prop="default_value"
     :rules="formValue.required ? [{ required: true, message: '默认值 为必填属性' }] : []"
   >
-    <template #label>
-      <div class="flex-between">
-        默认值
-        <el-checkbox v-model="formValue.show_default_value" label="显示默认值" />
-      </div>
-    </template>
+    <div class="defaultValueCheckbox">
+      <el-checkbox v-model="formValue.show_default_value" label="显示默认值" />
+    </div>
     <el-select
       class="m-2"
       multiple
@@ -117,19 +116,27 @@ const getData = () => {
 const rander = (form_data: any) => {
   formValue.value.option_list = form_data.option_list || []
   formValue.value.default_value = form_data.default_value
-  formValue.value.show_default_value = form_data.show_default_value
 }
 
 defineExpose({ getData, rander })
 onMounted(() => {
   formValue.value.option_list = []
   formValue.value.default_value = ''
-  formValue.value.show_default_value = true
-
+  if (formValue.value.show_default_value === undefined) {
+    formValue.value.show_default_value = true
+  }
   addOption()
 })
 </script>
 <style lang="scss" scoped>
+.defaultValueItem {
+  position: relative;
+  .defaultValueCheckbox {
+    position: absolute;
+    right: 0;
+    top: -35px;
+  }
+}
 :deep(.el-form-item__label) {
   display: block;
 }

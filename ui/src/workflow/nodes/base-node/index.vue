@@ -45,7 +45,7 @@
           @submitDialog="submitDialog"
         />
       </el-form-item>
-      <el-form-item >
+      <el-form-item>
         <template #label>
           <div class="flex-between">
             <div class="flex align-center">
@@ -70,7 +70,11 @@
                   <Setting />
                 </el-icon>
               </el-button>
-              <el-switch size="small" v-model="form_data.file_upload_enable" @change="switchFileUpload"/>
+              <el-switch
+                size="small"
+                v-model="form_data.file_upload_enable"
+                @change="switchFileUpload"
+              />
             </div>
           </div>
         </template>
@@ -80,168 +84,76 @@
       <el-form-item>
         <template #label>
           <div class="flex-between">
-            <div class="flex align-center">
-              <span class="mr-4">语音输入</span>
-              <!-- <el-tooltip
-                effect="dark"
-                content="开启后，需要设定语音转文本模型，语音输入完成后会转化为文字直接发送提问"
-                placement="right"
-              >
-                <AppIcon iconName="app-warning" class="app-warning-icon"></AppIcon>
-              </el-tooltip> -->
+            <span class="mr-4">语音输入</span>
+            <div class="flex">
+              <el-checkbox v-model="form_data.stt_autosend">自动发送</el-checkbox>
+              <el-switch
+                class="ml-8"
+                size="small"
+                v-model="form_data.stt_model_enable"
+                @change="sttModelEnableChange"
+              />
             </div>
-            <el-switch size="small" v-model="form_data.stt_model_enable" @change="sttModelEnableChange"/>
           </div>
         </template>
-
-        <el-select
+        <ModelSelect
+          @wheel="wheel"
           v-show="form_data.stt_model_enable"
           v-model="form_data.stt_model_id"
-          class="w-full"
-          popper-class="select-model"
-          placeholder="请选择语音识别模型"
-        >
-          <el-option-group
-            v-for="(value, label) in sttModelOptions"
-            :key="value"
-            :label="relatedObject(providerOptions, label, 'provider')?.name"
-          >
-            <el-option
-              v-for="item in value.filter((v: any) => v.status === 'SUCCESS')"
-              :key="item.id"
-              :label="item.name"
-              :value="item.id"
-              class="flex-between"
-            >
-              <div class="flex align-center">
-                <span
-                  v-html="relatedObject(providerOptions, label, 'provider')?.icon"
-                  class="model-icon mr-8"
-                ></span>
-                <span>{{ item.name }}</span>
-                <el-tag v-if="item.permission_type === 'PUBLIC'" type="info" class="info-tag ml-8"
-                  >公用
-                </el-tag>
-              </div>
-              <el-icon class="check-icon" v-if="item.id === form_data.stt_model_id">
-                <Check />
-              </el-icon>
-            </el-option>
-            <!-- 不可用 -->
-            <el-option
-              v-for="item in value.filter((v: any) => v.status !== 'SUCCESS')"
-              :key="item.id"
-              :label="item.name"
-              :value="item.id"
-              class="flex-between"
-              disabled
-            >
-              <div class="flex">
-                <span
-                  v-html="relatedObject(providerOptions, label, 'provider')?.icon"
-                  class="model-icon mr-8"
-                ></span>
-                <span>{{ item.name }}</span>
-                <span class="danger">{{
-                  $t('views.application.applicationForm.form.aiModel.unavailable')
-                }}</span>
-              </div>
-              <el-icon class="check-icon" v-if="item.id === form_data.stt_model_id">
-                <Check />
-              </el-icon>
-            </el-option>
-          </el-option-group>
-        </el-select>
+          :placeholder="$t('views.application.applicationForm.form.voiceInput.placeholder')"
+          :options="sttModelOptions"
+        ></ModelSelect>
       </el-form-item>
       <el-form-item>
         <template #label>
           <div class="flex-between">
             <span class="mr-4">语音播放</span>
-            <div>
-              <el-button
-                v-if="form_data.tts_type === 'TTS' && form_data.tts_model_enable"
-                type="primary"
-                link
-                @click="openTTSParamSettingDialog"
-                :disabled="!form_data.tts_model_id"
-                class="mr-4"
-              >
-                <el-icon class="mr-4">
-                  <Setting />
-                </el-icon>
-              </el-button>
-              <el-switch size="small" v-model="form_data.tts_model_enable" @change="ttsModelEnableChange"/>
+            <div class="flex">
+              <el-checkbox v-model="form_data.tts_autoplay">自动播放</el-checkbox>
+              <el-switch
+                class="ml-8"
+                size="small"
+                v-model="form_data.tts_model_enable"
+                @change="ttsModelEnableChange"
+              />
             </div>
           </div>
         </template>
-        <el-radio-group v-model="form_data.tts_type" v-show="form_data.tts_model_enable">
-          <el-radio label="浏览器播放(免费)" value="BROWSER" />
-          <el-radio label="TTS模型" value="TTS" />
-        </el-radio-group>
-        <el-select
-          v-if="form_data.tts_type === 'TTS' && form_data.tts_model_enable"
-          v-model="form_data.tts_model_id"
-          class="w-full"
-          popper-class="select-model"
-          @change="ttsModelChange()"
-          placeholder="请选择语音合成模型"
-          :teleported="false"
-        >
-          <el-option-group
-            v-for="(value, label) in ttsModelOptions"
-            :key="value"
-            :label="relatedObject(providerOptions, label, 'provider')?.name"
+        <div class="w-full">
+          <el-radio-group v-model="form_data.tts_type" v-show="form_data.tts_model_enable">
+            <el-radio label="浏览器播放(免费)" value="BROWSER" />
+            <el-radio label="TTS模型" value="TTS" />
+          </el-radio-group>
+        </div>
+        <div class="flex-between w-full">
+          <ModelSelect
+            @wheel="wheel"
+            v-if="form_data.tts_type === 'TTS' && form_data.tts_model_enable"
+            v-model="form_data.tts_model_id"
+            :placeholder="$t('views.application.applicationForm.form.voicePlay.placeholder')"
+            :options="ttsModelOptions"
+            @change="ttsModelChange()"
+          ></ModelSelect>
+
+          <el-button
+            v-if="form_data.tts_type === 'TTS' && form_data.tts_model_enable"
+            @click="openTTSParamSettingDialog"
+            :disabled="!form_data.tts_model_id"
+            class="ml-8"
           >
-            <el-option
-              v-for="item in value.filter((v: any) => v.status === 'SUCCESS')"
-              :key="item.id"
-              :label="item.name"
-              :value="item.id"
-              class="flex-between"
-            >
-              <div class="flex align-center">
-                <span
-                  v-html="relatedObject(providerOptions, label, 'provider')?.icon"
-                  class="model-icon mr-8"
-                ></span>
-                <span>{{ item.name }}</span>
-                <el-tag v-if="item.permission_type === 'PUBLIC'" type="info" class="info-tag ml-8"
-                  >公用
-                </el-tag>
-              </div>
-              <el-icon class="check-icon" v-if="item.id === form_data.tts_model_id">
-                <Check />
-              </el-icon>
-            </el-option>
-            <!-- 不可用 -->
-            <el-option
-              v-for="item in value.filter((v: any) => v.status !== 'SUCCESS')"
-              :key="item.id"
-              :label="item.name"
-              :value="item.id"
-              class="flex-between"
-              disabled
-            >
-              <div class="flex">
-                <span
-                  v-html="relatedObject(providerOptions, label, 'provider')?.icon"
-                  class="model-icon mr-8"
-                ></span>
-                <span>{{ item.name }}</span>
-                <span class="danger">{{
-                  $t('views.application.applicationForm.form.aiModel.unavailable')
-                }}</span>
-              </div>
-              <el-icon class="check-icon" v-if="item.id === form_data.tts_model_id">
-                <Check />
-              </el-icon>
-            </el-option>
-          </el-option-group>
-        </el-select>
+            <el-icon>
+              <el-icon><Operation /></el-icon>
+            </el-icon>
+          </el-button>
+        </div>
       </el-form-item>
     </el-form>
     <TTSModeParamSettingDialog ref="TTSModeParamSettingDialogRef" @refresh="refreshTTSForm" />
-    <FileUploadSettingDialog ref="FileUploadSettingDialogRef" :node-model="nodeModel" @refresh="refreshFileUploadForm"/>
+    <FileUploadSettingDialog
+      ref="FileUploadSettingDialogRef"
+      :node-model="nodeModel"
+      @refresh="refreshFileUploadForm"
+    />
   </NodeContainer>
 </template>
 <script setup lang="ts">
@@ -250,10 +162,7 @@ import { groupBy, set } from 'lodash'
 import NodeContainer from '@/workflow/common/NodeContainer.vue'
 import type { FormInstance } from 'element-plus'
 import { ref, computed, onMounted } from 'vue'
-import { relatedObject } from '@/utils/utils'
-import useStore from '@/stores'
 import applicationApi from '@/api/application'
-import type { Provider } from '@/api/type/model'
 import { MsgError, MsgSuccess, MsgWarning } from '@/utils/message'
 import { t } from '@/locales'
 import TTSModeParamSettingDialog from '@/views/application/component/TTSModeParamSettingDialog.vue'
@@ -261,7 +170,6 @@ import ApiInputFieldTable from './component/ApiInputFieldTable.vue'
 import UserInputFieldTable from './component/UserInputFieldTable.vue'
 import FileUploadSettingDialog from '@/workflow/nodes/base-node/component/FileUploadSettingDialog.vue'
 
-const { model } = useStore()
 
 const {
   params: { id }
@@ -271,7 +179,6 @@ const props = defineProps<{ nodeModel: any }>()
 
 const sttModelOptions = ref<any>(null)
 const ttsModelOptions = ref<any>(null)
-const providerOptions = ref<Array<Provider>>([])
 const TTSModeParamSettingDialogRef = ref<InstanceType<typeof TTSModeParamSettingDialog>>()
 const UserInputFieldTableFef = ref()
 const ApiInputFieldTableFef = ref()
@@ -280,7 +187,7 @@ const FileUploadSettingDialogRef = ref<InstanceType<typeof FileUploadSettingDial
 const form = {
   name: '',
   desc: '',
-  prologue: t('views.application.prompt.defaultPrologue')
+  prologue: t('views.application.applicationForm.form.defaultPrologue')
 }
 
 const wheel = (e: any) => {
@@ -329,12 +236,6 @@ const validate = () => {
   })
 }
 
-function getProvider() {
-  model.asyncGetProvider().then((res: any) => {
-    providerOptions.value = res?.data
-  })
-}
-
 function getSTTModel() {
   applicationApi.getApplicationSTTModel(id).then((res: any) => {
     sttModelOptions.value = groupBy(res?.data, 'provider')
@@ -368,7 +269,6 @@ function sttModelEnableChange() {
   }
 }
 
-
 const openTTSParamSettingDialog = () => {
   const model_id = form_data.value.tts_model_id
   if (!model_id) {
@@ -382,7 +282,6 @@ const refreshTTSForm = (data: any) => {
   form_data.value.tts_model_params_setting = data
 }
 
-
 const switchFileUpload = () => {
   const default_upload_setting = {
     maxFiles: 3,
@@ -394,7 +293,8 @@ const switchFileUpload = () => {
   }
 
   if (form_data.value.file_upload_enable) {
-    form_data.value.file_upload_setting = form_data.value.file_upload_setting || default_upload_setting
+    form_data.value.file_upload_setting =
+      form_data.value.file_upload_setting || default_upload_setting
   }
   props.nodeModel.graphModel.eventCenter.emit('refreshFileUploadConfig')
 }
@@ -411,7 +311,6 @@ onMounted(() => {
   if (!props.nodeModel.properties.node_data.tts_type) {
     set(props.nodeModel.properties.node_data, 'tts_type', 'BROWSER')
   }
-  getProvider()
   getTTSModel()
   getSTTModel()
 })

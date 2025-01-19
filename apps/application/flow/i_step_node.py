@@ -17,7 +17,7 @@ from django.db.models import QuerySet
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError, ErrorDetail
 
-from application.flow.common import Answer
+from application.flow.common import Answer, NodeChunk
 from application.models import ChatRecord
 from application.models.api_key_model import ApplicationPublicAccessClient
 from common.constants.authentication_type import AuthenticationType
@@ -87,7 +87,9 @@ class WorkFlowPostHandler:
         chat_cache.set(chat_id,
                        self.chat_info, timeout=60 * 30)
         if self.client_type == AuthenticationType.APPLICATION_ACCESS_TOKEN.value:
-            application_public_access_client = QuerySet(ApplicationPublicAccessClient).filter(id=self.client_id).first()
+            application_public_access_client = (QuerySet(ApplicationPublicAccessClient)
+                                                .filter(client_id=self.client_id,
+                                                        application_id=self.chat_info.application.id).first())
             if application_public_access_client is not None:
                 application_public_access_client.access_num = application_public_access_client.access_num + 1
                 application_public_access_client.intraday_access_num = application_public_access_client.intraday_access_num + 1
@@ -175,6 +177,7 @@ class INode:
         if up_node_id_list is None:
             up_node_id_list = []
         self.up_node_id_list = up_node_id_list
+        self.node_chunk = NodeChunk()
         self.runtime_node_id = sha1(uuid.NAMESPACE_DNS.bytes + bytes(str(uuid.uuid5(uuid.NAMESPACE_DNS,
                                                                                     "".join([*sorted(up_node_id_list),
                                                                                              node.id]))),
@@ -214,6 +217,7 @@ class INode:
 
     def get_write_error_context(self, e):
         self.status = 500
+        self.answer_text = str(e)
         self.err_message = str(e)
         self.context['run_time'] = time.time() - self.context['start_time']
 
